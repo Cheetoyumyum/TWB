@@ -63,19 +63,20 @@ A comprehensive Twitch bot for chat engagement, channel points management, gambl
 - `!rain <amount> <people|max>` - Rain points to active chatters (last 5 min)
 
 **Actions:**
-- `!buy timeout @user` - Timeout someone for 60 seconds (500 pts)
-- `!buy alert <message>` - Send custom alert (100 pts)
-- `!buy shoutout` - Get a shoutout (300 pts)
-- `!buy bonus` - Get 500 bonus points (1000 pts)
-- `!buy poll <question> <opt1> <opt2>` - Create a poll (400 pts)
-- `!buy roast @user` - Friendly roast someone (300 pts)
-- `!buy compliment` - Get a nice compliment (150 pts)
-- `!buy quote <text>` - Save a memorable quote (50 pts)
-- `!buy countdown <seconds>` - Start a countdown (200 pts)
-- `!buy raid @channel` - Announce a raid target (600 pts)
-- `!buy challenge @user` - Challenge another user (400 pts)
-- `!buy tip <message>` - Send a tip message (200 pts)
-- `!buy streak` - Protect your gambling streak (800 pts)
+- `!buy timeout @user` - Timeout someone for 60 seconds
+- `!buy alert <message>` - Send custom alert
+- `!buy shoutout` - Get a shoutout
+- `!buy bonus` - Get 500 bonus points
+- `!buy poll <question> <opt1> <opt2>` - Create a poll
+- `!buy roast @user` - Friendly roast someone
+- `!buy compliment` - Get a nice compliment
+- `!buy quote <text>` - Save a memorable quote
+- `!buy countdown <seconds>` - Start a countdown
+- `!buy raid @channel` - Announce a raid target
+- `!buy challenge @user` - Challenge another user
+- `!buy tip <message>` - Send a tip message
+- `!buy streak` - Protect your gambling streak
+- `!rain <qty> <ppl> ` - Evenly rains points to active chatters
 - `!actions` - List all available actions with prices
 
 **Emotes:**
@@ -228,7 +229,7 @@ Edit `src/ai/chatHandler.ts` to adjust the system prompt and response behavior.
 ## Troubleshooting
 
 ### Bot won't connect
-- Verify your OAuth token is correct (must start with `oauth:`)
+- Verify your OAuth token is correct
 - Check that the bot account exists and is not banned
 - Ensure the channel name is correct (without #)
 
@@ -249,4 +250,5 @@ MIT
 ## Contributing
 
 Feel free to submit issues and enhancement requests!
+
 
