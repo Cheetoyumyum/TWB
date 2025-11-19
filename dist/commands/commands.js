@@ -42,6 +42,10 @@ class CommandHandler {
             case 'blackjack':
             case 'bj':
                 return this.handleBlackjack(username, args);
+            case 'hit':
+                return this.handleBlackjackAction(username, 'hit');
+            case 'stand':
+                return this.handleBlackjackAction(username, 'stand');
             case 'wheel':
             case 'wheeloffortune':
                 return this.handleWheel(username, args);
@@ -82,6 +86,10 @@ class CommandHandler {
                 return await this.handleAdCommand(username, args);
             case 'rain':
                 return await this.handleRainCommand(username, args);
+            case 'givepts':
+            case 'givepoints':
+            case 'give':
+                return this.handleGivePoints(username, args);
             default:
                 return null;
         }
@@ -452,7 +460,7 @@ class CommandHandler {
     }
     handleBlackjack(username, args) {
         if (args.length < 1) {
-            return `@${username} Usage: !blackjack <bet|all> - Play blackjack! Use "all" to bet your entire balance!`;
+            return `@${username} Usage: !blackjack <bet|all> - Play blackjack! Use "all" to bet your entire balance! Then use !hit or !stand`;
         }
         const betArg = args[0].toLowerCase();
         let bet;
@@ -470,6 +478,9 @@ class CommandHandler {
             return `@${username} Invalid bet amount.`;
         }
         return this.games.blackjack(username, bet).message;
+    }
+    handleBlackjackAction(username, action) {
+        return this.games.blackjack(username, 0, action).message;
     }
     handleWheel(username, args) {
         if (args.length < 1) {
@@ -549,10 +560,25 @@ class CommandHandler {
         return message;
     }
     getHelp() {
-        return `🎮 Games: !coinflip <bet> <heads|tails>, !dice <bet>, !slots <bet>, !roulette <bet> <choice>, !blackjack <bet>, !wheel <bet>, !rps <bet> <rock|paper|scissors> | 💰 Economy: !balance, !leaderboard, !history | 🌧️ Rain: !rain <amount> <people|max> | 🛒 Actions: !buy <action> <target>, !actions | 🎭 Emotes: !emote <name>, !emotelist, !randemote | 📺 Ads: !ad [seconds] | 📖 Use !commands for full list`;
+        return `🎮 Games: !coinflip <bet> <heads|tails>, !dice <bet>, !slots <bet>, !roulette <bet> <choice>, !blackjack <bet>, !wheel <bet>, !rps <bet> <rock|paper|scissors> | 💰 Economy: !balance, !leaderboard, !history | 🌧️ Rain: !rain <amount> <people|max> | 🛒 Actions: !buy <action> <target>, !actions | 🎭 Emotes: !emote <name>, !emotelist, !randemote | 📺 Ads: !ad [seconds] | 👑 Mod: !givepts @user <amount> | 📖 Use !commands for full list`;
+    }
+    handleGivePoints(username, args) {
+        if (args.length < 2) {
+            return `@${username} Usage: !givepts <@user> <amount> - Give points to a user (Streamer/Mod only)`;
+        }
+        const targetUser = args[0].replace('@', '').trim();
+        const amount = parseInt(args[1]);
+        if (isNaN(amount) || amount <= 0) {
+            return `@${username} Invalid amount. Use a positive number.`;
+        }
+        // Note: Permission checking should be done in twitchBot.ts before calling this
+        // For now, we'll allow it (you can add permission checks in the bot)
+        this.db.addWin(targetUser, amount, `Gifted by ${username}`);
+        const newBalance = this.db.getUserBalance(targetUser)?.balance || 0;
+        return `@${username} ✅ Gave ${amount.toLocaleString()} points to @${targetUser}! Their new balance: ${newBalance.toLocaleString()} points`;
     }
     getAllCommands() {
-        return `📋 ALL COMMANDS: 🎮 Games: !coinflip <bet> <h/t>, !dice <bet>, !slots <bet>, !roulette <bet> <red/black/number>, !blackjack <bet>, !wheel <bet>, !rps <bet> <rock/paper/scissors> | 💰 Economy: !balance, !leaderboard, !history | 🌧️ Rain: !rain <amount> <people|max> | 🛒 Actions: !buy timeout @user, !buy alert <msg>, !buy shoutout, !actions | 🎭 Emotes: !emote <name>, !emotelist [search], !randemote | 📺 Ads: !ad [seconds] or !ad end | 💡 Type !help for quick guide`;
+        return `📋 ALL COMMANDS: 🎮 Games: !coinflip <bet> <h/t>, !dice <bet>, !slots <bet>, !roulette <bet> <red/black/number>, !blackjack <bet>, !wheel <bet>, !rps <bet> <rock/paper/scissors> | 💰 Economy: !balance, !leaderboard, !history | 🌧️ Rain: !rain <amount> <people|max> | 🛒 Actions: !buy timeout @user, !buy alert <msg>, !buy shoutout, !actions | 🎭 Emotes: !emote <name>, !emotelist [search], !randemote | 📺 Ads: !ad [seconds] or !ad end | 👑 Mod: !givepts @user <amount> | 💡 Type !help for quick guide`;
     }
 }
 exports.CommandHandler = CommandHandler;

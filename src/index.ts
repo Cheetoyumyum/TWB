@@ -1,6 +1,8 @@
 import * as dotenv from 'dotenv';
 import { TwitchBot } from './bot/twitchBot';
 import { WebhookServer } from './webhook/webhook';
+import { RedemptionPoller } from './channelPoints/redemptionPoller';
+import axios from 'axios';
 
 // Load environment variables
 dotenv.config();
@@ -72,8 +74,37 @@ async function main() {
 
   // Start webhook server for channel points
   const port = parseInt(process.env.PORT || '3000', 10);
-  const webhookServer = new WebhookServer(bot, port);
+  const webhookSecret = process.env.WEBHOOK_SECRET;
+  const webhookServer = new WebhookServer(bot, port, webhookSecret);
   webhookServer.start();
+  
+  if (webhookSecret) {
+    console.log(`🔐 Webhook secret configured - signature verification enabled`);
+  } else {
+    console.log(`⚠️  No webhook secret set - signature verification disabled (less secure)`);
+  }
+
+  // Start redemption poller as fallback (if Client ID and User ID are available)
+  const clientId = process.env.TWITCH_CLIENT_ID;
+  const channelUserId = process.env.TWITCH_CHANNEL_USER_ID;
+  
+  if (clientId && channelUserId && config.oauthToken) {
+    console.log('🔄 Starting redemption poller (fallback method)...');
+    const poller = new RedemptionPoller(bot, {
+      clientId,
+      oauthToken: config.oauthToken,
+      broadcasterId: channelUserId,
+      pollInterval: 30000, // Poll every 30 seconds
+    });
+    
+    poller.start().catch(err => {
+      console.warn('⚠️  Redemption poller failed to start:', err);
+      console.warn('   Make sure TWITCH_CLIENT_ID and TWITCH_CHANNEL_USER_ID are set correctly');
+    });
+  } else {
+    console.log('⚠️  Redemption poller disabled - set TWITCH_CLIENT_ID and TWITCH_CHANNEL_USER_ID to enable');
+    console.log('   (Webhooks are the preferred method, but polling works as a fallback)');
+  }
 
   // Graceful shutdown
   process.on('SIGINT', async () => {

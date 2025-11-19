@@ -231,11 +231,110 @@ Your bot uses channel points for deposits. Here's how to set them up:
 - If they redeem "DEPOSIT: 500", they type `!deposit 500`
 - If they redeem "DEPOSIT: 10000", they type `!deposit 10000`
 
-### Alternative: Automatic Detection (Advanced)
+### Alternative: Automatic Detection with Webhooks (Advanced - Optional)
 
-If you set up webhooks (see Step 8), the bot can automatically detect redemptions without the manual `!deposit` command. But the manual method works fine for now!
+**Note**: This is OPTIONAL! The manual `!deposit` method works perfectly fine. Webhooks just make it automatic.
 
-## Step 8: Start the Bot!
+If you want users to automatically get points when they redeem channel points (without typing `!deposit`), you can set up Twitch EventSub webhooks. See the detailed webhook setup guide in README.md under "Webhook Configuration".
+
+**Quick Summary:**
+1. Bot runs webhook server on port 3000
+2. Use ngrok to expose it: `ngrok http 3000`
+3. Create EventSub subscription in Twitch Developer Console
+4. Point it to your ngrok URL + `/webhook/channel-points`
+5. Done! Redemptions will be automatic.
+
+But again, this is optional - the manual method works great!
+
+## Step 8: Set Up Webhooks (Optional - Advanced)
+
+**SKIP THIS STEP if you're fine with users typing `!deposit` after redeeming channel points!**
+
+Webhooks allow automatic detection of channel point redemptions. This is more complex but provides a seamless experience.
+
+### Quick Webhook Setup
+
+1. **Start your bot** (it will start the webhook server automatically)
+
+2. **Install and run ngrok**:
+   - Download from: https://ngrok.com/download
+   - Run: `ngrok http 3000`
+   - Copy the HTTPS URL (e.g., `https://abc123.ngrok.io`)
+
+3. **Get your Twitch User ID**:
+   - Go to: https://www.twitch.tv/settings/profile
+   - Your User ID is shown there, OR
+   - Use this API call: `curl -H "Authorization: OAuth YOUR_OAUTH_TOKEN" https://api.twitch.tv/helix/users`
+   - Look for the "id" field in the response
+
+4. **Get your Client ID** (if you don't have one):
+   - Go to: https://dev.twitch.tv/console/apps
+   - Create a new application (name it anything, redirect URL can be `http://localhost`)
+   - Copy your Client ID
+
+5. **Create EventSub Subscription using API** (Recommended method):
+
+   Generate a webhook secret:
+   ```bash
+   # On Windows PowerShell:
+   -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 32 | % {[char]$_})
+   
+   # On Linux/Mac:
+   openssl rand -hex 16
+   ```
+
+   Then run this curl command (replace the values):
+   ```bash
+   curl -X POST 'https://api.twitch.tv/helix/eventsub/subscriptions' \
+     -H 'Authorization: Bearer YOUR_OAUTH_TOKEN' \
+     -H 'Client-Id: YOUR_CLIENT_ID' \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "type": "channel.channel_points_custom_reward_redemption.add",
+       "version": "1",
+       "condition": {
+         "broadcaster_user_id": "YOUR_CHANNEL_USER_ID"
+       },
+       "transport": {
+         "method": "webhook",
+         "callback": "https://abc123.ngrok.io/webhook/channel-points",
+         "secret": "YOUR_GENERATED_SECRET"
+       }
+     }'
+   ```
+
+   Replace:
+   - `YOUR_OAUTH_TOKEN` - Your bot's OAuth token from .env
+   - `YOUR_CLIENT_ID` - From step 4
+   - `YOUR_CHANNEL_USER_ID` - From step 3
+   - `https://abc123.ngrok.io` - Your ngrok URL
+   - `YOUR_GENERATED_SECRET` - The secret from above
+
+6. **Add webhook secret to .env** (Optional but recommended for security):
+   - Open your `.env` file
+   - Add: `WEBHOOK_SECRET=YOUR_GENERATED_SECRET` (use the same secret from step 5)
+   - This enables signature verification to ensure requests are from Twitch
+
+7. **Verify**: The API should return a success response. Check subscription status:
+   ```bash
+   curl -H "Authorization: Bearer YOUR_OAUTH_TOKEN" \
+        -H "Client-Id: YOUR_CLIENT_ID" \
+        https://api.twitch.tv/helix/eventsub/subscriptions
+   ```
+
+8. **Test**: Redeem a "DEPOSIT: 100" reward - it should work automatically!
+
+**Note about the webhook secret:**
+- The secret is used by your bot to verify that webhook requests are actually from Twitch
+- ngrok doesn't use the secret - it just forwards requests to your bot
+- Your bot verifies the signature using the secret to prevent fake/spoofed webhooks
+- If you don't set `WEBHOOK_SECRET` in `.env`, verification is disabled (works but less secure)
+
+**For detailed webhook instructions, see README.md**
+
+---
+
+## Step 9: Start the Bot!
 
 In your terminal, run:
 
@@ -260,7 +359,7 @@ You should see:
 
 **If you see errors**, check the troubleshooting section below.
 
-## Step 9: Test It!
+## Step 10: Test It!
 
 1. **Go to your Twitch channel chat** (make sure the bot is connected)
 2. **Type**: `!help` - You should see a quick command guide

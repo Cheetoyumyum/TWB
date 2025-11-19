@@ -25,7 +25,7 @@ class ChannelPointsHandler {
             const newBalance = this.db.getUserBalance(username)?.balance || 0;
             return {
                 success: true,
-                message: `@${username} Deposited ${depositAmount} channel points! New balance: ${newBalance}`,
+                message: `@${username} ✅ Deposited ${depositAmount.toLocaleString()} points! New balance: ${newBalance.toLocaleString()} points`,
                 deposited: depositAmount,
             };
         }

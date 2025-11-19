@@ -79,18 +79,79 @@ export class SevenTVService {
 
       // Get user's emote sets
       const userResponse = await axios.get(`${this.baseURL}/users/${userId}`);
-      const emoteSets = userResponse.data?.emote_sets || [];
+      
+      // 7TV API v3 returns emote_sets as an array of set IDs (strings)
+      // But it might also be in connected_accounts or emote_set structure
+      let emoteSetsRaw: any[] = [];
+      
+      if (userResponse.data?.emote_sets && Array.isArray(userResponse.data.emote_sets)) {
+        emoteSetsRaw = userResponse.data.emote_sets;
+      } else if (userResponse.data?.emote_set?.id) {
+        // Single emote set
+        emoteSetsRaw = [userResponse.data.emote_set.id];
+      } else if (userResponse.data?.emote_set) {
+        // Emote set object
+        emoteSetsRaw = [userResponse.data.emote_set];
+      }
+      
+      // Handle both formats: array of strings (IDs) or array of objects with id property
+      const emoteSetIds: string[] = emoteSetsRaw.map((set: any) => {
+        if (typeof set === 'string') {
+          return set;
+        } else if (set && typeof set === 'object' && set.id) {
+          return set.id;
+        }
+        return null;
+      }).filter((id: string | null) => id !== null);
+
+      if (emoteSetIds.length === 0) {
+        console.warn(`7TV: User ${userId} has no emote sets. Response structure:`, JSON.stringify(userResponse.data, null, 2).substring(0, 500));
+        return [];
+      }
+      
+      console.log(`7TV: Found ${emoteSetIds.length} emote set(s) for user ${userId}`);
 
       const allEmotes: SevenTVEmote[] = [];
 
       // Fetch emotes from each set
-      for (const setId of emoteSets) {
+      for (const setId of emoteSetIds) {
         try {
           const setResponse = await axios.get(`${this.baseURL}/emote-sets/${setId}`);
           const emotes = setResponse.data?.emotes || [];
-          allEmotes.push(...emotes);
+          
+          // Handle different emote formats from 7TV API
+          const processedEmotes = emotes.map((emote: any) => {
+            // 7TV API might return emotes in different formats
+            if (emote.data && emote.data.name) {
+              return {
+                id: emote.id || emote.data.id,
+                name: emote.data.name || emote.name,
+                data: {
+                  name: emote.data.name || emote.name,
+                  width: emote.data.width,
+                  height: emote.data.height,
+                  animated: emote.data.animated
+                },
+                owner: emote.owner
+              };
+            } else {
+              return {
+                id: emote.id,
+                name: emote.name,
+                data: {
+                  name: emote.name,
+                  width: emote.width,
+                  height: emote.height,
+                  animated: emote.animated
+                },
+                owner: emote.owner
+              };
+            }
+          });
+          
+          allEmotes.push(...processedEmotes);
         } catch (error: any) {
-          console.warn(`Error fetching 7TV emote set ${setId}:`, error.message);
+          console.warn(`Error fetching 7TV emote set ${setId}:`, error.response?.status || error.message);
         }
       }
 

@@ -1,3 +1,4 @@
+
 # Pricing Configuration Guide
 
 All prices are configured in `src/config/prices.ts` for easy editing.

@@ -59,6 +59,10 @@ A comprehensive Twitch bot for chat engagement, channel points management, gambl
   - Example: `!rain 1000 5` - Rain 1000 points to 5 random active chatters
   - Example: `!rain 5000 max` - Rain 5000 points to ALL active chatters
 
+#### 👑 Moderator/Streamer Commands
+- `!givepts <@user> <amount>` (or `!givepoints`, `!give`) - Give points to a user (Streamer/Mod only)
+  - Example: `!givepts @SomeUser 5000` - Give 5000 points to SomeUser
+
 #### 🎮 Gambling Games
 All games support `all` or `allin` to bet your entire balance!
 
@@ -213,15 +217,117 @@ Use `!actions` to see all available actions and their prices!
 - Example: `DEPOSIT:100` ❌ (wrong - missing space)
 - Example: `DEPOSIT: 100 ` ❌ (wrong - extra space at end)
 
-### Webhook Configuration (Optional)
+### Webhook Configuration (Optional - Advanced)
 
-For automatic channel points redemption handling, set up Twitch EventSub webhooks:
+**Note**: Webhooks are optional! The bot works fine with manual `!deposit` commands. Webhooks allow automatic detection of channel point redemptions without users needing to type `!deposit`.
 
-1. The bot includes a webhook server on port 3000
-2. Use a service like ngrok to expose it: `ngrok http 3000`
-3. Configure EventSub in Twitch Developer Console to send redemptions to your webhook URL
+#### What Webhooks Do
+- Automatically detect when users redeem "DEPOSIT: X" channel points
+- No need for users to type `!deposit` after redeeming
+- Seamless experience for your viewers
 
-Alternatively, you can manually trigger deposits using the `/trigger/deposit` endpoint.
+#### Prerequisites
+- Your bot must be running and accessible from the internet
+- You'll need a public URL (use ngrok or similar service)
+- Twitch Developer Console access
+
+#### Step-by-Step Setup
+
+1. **Start your bot** (it will start the webhook server on port 3000)
+
+2. **Expose your local server** using ngrok:
+   ```bash
+   # Install ngrok: https://ngrok.com/download
+   ngrok http 3000
+   ```
+   - Copy the HTTPS URL (e.g., `https://abc123.ngrok.io`)
+   - Your webhook URL will be: `https://abc123.ngrok.io/webhook/channel-points`
+
+3. **Get your Twitch User ID** (needed for the API call):
+   - You can get this from: https://www.twitch.tv/settings/profile
+   - Or use an API tool: https://dev.twitch.tv/docs/api/reference#get-users
+   - Or the bot can help you find it (see alternative method below)
+
+4. **Create EventSub Subscription using Twitch API**:
+
+   **Option A: Using curl (Recommended)**
+   
+   Replace these values:
+   - `YOUR_OAUTH_TOKEN` - Your bot's OAuth token (the one in your .env file)
+   - `YOUR_CLIENT_ID` - Get from https://dev.twitch.tv/console/apps (create an app if needed)
+   - `YOUR_CHANNEL_USER_ID` - Your Twitch user ID (see step 3)
+   - `YOUR_NGROK_URL` - Your ngrok HTTPS URL (e.g., `https://abc123.ngrok.io`)
+   - `YOUR_WEBHOOK_SECRET` - Generate a random secret (e.g., use: `openssl rand -hex 16`)
+
+   ```bash
+   curl -X POST 'https://api.twitch.tv/helix/eventsub/subscriptions' \
+     -H 'Authorization: Bearer YOUR_OAUTH_TOKEN' \
+     -H 'Client-Id: YOUR_CLIENT_ID' \
+     -H 'Content-Type: application/json' \
+     -d '{
+       "type": "channel.channel_points_custom_reward_redemption.add",
+       "version": "1",
+       "condition": {
+         "broadcaster_user_id": "YOUR_CHANNEL_USER_ID"
+       },
+       "transport": {
+         "method": "webhook",
+         "callback": "YOUR_NGROK_URL/webhook/channel-points",
+         "secret": "YOUR_WEBHOOK_SECRET"
+       }
+     }'
+   ```
+
+   **Option B: Using Twitch Developer Console (if available)**
+   - Go to https://dev.twitch.tv/console/eventsub/subscriptions
+   - Click "Create Subscription"
+   - Fill in the form with the same values as above
+
+5. **Verify the subscription**:
+   - The API call should return a JSON response with subscription details
+   - Twitch will send a verification request to your webhook
+   - The bot should automatically respond (check bot logs)
+   - Check subscription status: `curl -H "Authorization: Bearer YOUR_OAUTH_TOKEN" -H "Client-Id: YOUR_CLIENT_ID" https://api.twitch.tv/helix/eventsub/subscriptions`
+
+6. **Test it**:
+   - Redeem a "DEPOSIT: 100" channel point reward
+   - The bot should automatically deposit without needing `!deposit` command!
+
+#### How the Webhook Secret Works
+
+**Important**: ngrok doesn't use the webhook secret - your bot's webhook server verifies it!
+
+1. **When you create the subscription**: You provide the secret to Twitch in the API call
+2. **When Twitch sends events**: Twitch signs each webhook request with an HMAC-SHA256 signature using your secret
+3. **Your bot verifies**: The bot receives the request, recalculates the signature using the same secret, and compares it
+4. **Security**: If signatures don't match, the request is rejected (prevents fake/spoofed webhooks)
+
+**The secret is used by:**
+- ✅ Your bot's webhook server (to verify incoming requests are from Twitch)
+- ✅ Twitch (to sign the webhook requests it sends)
+- ❌ NOT by ngrok (ngrok just forwards the requests)
+
+**To enable verification:**
+- Add `WEBHOOK_SECRET=your_secret_here` to your `.env` file
+- Use the same secret you used when creating the EventSub subscription
+- The bot will automatically verify all incoming webhook requests
+
+**For development/testing**: You can skip the secret (verification will be disabled), but it's recommended for production!
+
+#### Troubleshooting Webhooks
+- **Subscription not working**: Make sure ngrok is running and your bot is accessible
+- **Verification failed**: Check that your webhook server is running and responding
+- **Signature verification failed**: Make sure `WEBHOOK_SECRET` in `.env` matches the secret you used in the subscription
+- **Still need !deposit**: Check bot logs for webhook errors, verify subscription is "Enabled"
+- **ngrok URL changed**: Update the EventSub subscription with the new URL (delete old subscription and create new one)
+
+#### Alternative: Manual Testing
+You can test deposits manually using the endpoint:
+```bash
+curl -X POST http://localhost:3000/trigger/deposit \
+  -H "Content-Type: application/json" \
+  -d '{"username": "YourUsername", "amount": 100}'
+```
 
 ## Usage Examples
 
@@ -279,6 +385,11 @@ Alternatively, you can manually trigger deposits using the `/trigger/deposit` en
 !dice all                    # Bet everything on dice
 !slots all                   # Bet everything on slots
 !allin                       # Check your all-in statistics
+```
+
+### Moderator Commands
+```
+!givepts @SomeUser 5000      # Give 5000 points to a user (Streamer/Mod only)
 ```
 
 ## Project Structure

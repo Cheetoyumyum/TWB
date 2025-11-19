@@ -35,8 +35,11 @@ export class TwitchBot {
   private readonly COOLDOWN_MS = 3000; // 3 seconds between responses per user
   private readonly ACTIVE_CHATTER_WINDOW = 5 * 60 * 1000; // 5 minutes
 
+  private channelName: string; // Store channel name for broadcaster check
+  
   constructor(config: BotConfig) {
     this.channel = config.channel.toLowerCase().replace('#', '');
+    this.channelName = config.channel.toLowerCase().replace('#', '');
 
     // Initialize database
     this.db = new BotDatabase(config.dbPath);
@@ -98,18 +101,86 @@ export class TwitchBot {
   }
 
   private setupEventHandlers(): void {
+    // Listen to ALL messages including system messages
     this.client.on('message', async (channel: string, tags: tmi.ChatUserstate, message: string, self: boolean) => {
       if (self) return; // Ignore bot's own messages
 
       const username = tags.username || 'unknown';
       const displayName = tags['display-name'] || username;
       
+      // Log ALL messages that contain "redeemed" or "DEPOSIT" for debugging
+      const lowerMessage = message.toLowerCase();
+      const upperMessage = message.toUpperCase();
+      if (lowerMessage.includes('redeemed') || upperMessage.includes('DEPOSIT:')) {
+        console.log(`🔍 [DEBUG] Message received: "${message}"`);
+        console.log(`   From: ${displayName} (${username})`);
+        console.log(`   Tags:`, JSON.stringify({
+          mod: tags.mod,
+          subscriber: tags.subscriber,
+          badges: tags.badges,
+          'message-type': tags['message-type'],
+          'user-type': tags['user-type']
+        }));
+      }
+      
       // Track active chatters (for rain command)
       this.activeChatters.set(displayName.toLowerCase(), Date.now());
+
+      // Check for channel point redemption messages in chat (fallback detection)
+      // Twitch shows redemption messages like "Username redeemed DEPOSIT: 10000"
+      // This is a fallback - webhooks are the proper way, but this catches chat messages
+      
+      // Very flexible pattern matching - check if message contains both "redeemed" and "DEPOSIT:"
+      const hasRedeemed = lowerMessage.includes('redeemed');
+      const hasDeposit = upperMessage.includes('DEPOSIT:');
+      
+      if (hasRedeemed && hasDeposit) {
+        // Extract the deposit amount from anywhere in the message
+        const depositMatch = message.match(/DEPOSIT:\s*(\d+)/i);
+        if (depositMatch) {
+          const depositAmount = parseInt(depositMatch[1]);
+          const rewardTitle = `DEPOSIT: ${depositAmount}`;
+          
+          // Try to extract username - could be at start of message or anywhere
+          let redeemerName = displayName; // Default to message sender
+          
+          // Pattern 1: "Username redeemed DEPOSIT: X" at start
+          const startPattern = /^(\w+)\s+redeemed/i;
+          const startMatch = message.match(startPattern);
+          if (startMatch) {
+            redeemerName = startMatch[1];
+          } else {
+            // Pattern 2: "Username redeemed" anywhere
+            const anywherePattern = /(\w+)\s+redeemed/i;
+            const anywhereMatch = message.match(anywherePattern);
+            if (anywhereMatch) {
+              redeemerName = anywhereMatch[1];
+            }
+          }
+          
+          console.log(`💡 Auto-detected redemption in chat: ${redeemerName} redeemed ${rewardTitle}`);
+          console.log(`   Full message: "${message}"`);
+          this.handleChannelPointsRedemption(redeemerName, rewardTitle, depositAmount);
+          return; // Don't process as regular command
+        }
+      }
 
       // Handle commands
       if (message.startsWith('!')) {
         const [command, ...args] = message.slice(1).split(' ');
+        
+        // Check for mod-only commands
+        const isMod = tags.mod || false;
+        const isBroadcaster = tags.badges?.broadcaster === '1' || username.toLowerCase() === this.channelName.toLowerCase();
+        const hasModPermissions = isMod || isBroadcaster;
+        
+        // Restrict certain commands to mods/streamer
+        const modOnlyCommands = ['givepts', 'givepoints', 'give', 'manualdeposit', 'mdeposit'];
+        if (modOnlyCommands.includes(command.toLowerCase()) && !hasModPermissions) {
+          this.say(`@${displayName} That command is only available to moderators and the streamer.`);
+          return;
+        }
+        
         const response = await this.commandHandler.handleCommand(displayName, command, args);
         if (response) {
           this.say(response);
@@ -133,6 +204,17 @@ export class TwitchBot {
             this.updateCooldown(username);
           }
         }
+      }
+    });
+
+    // Listen for all raw messages (for debugging)
+    this.client.on('raw_message', (messageCloned: { command: string; channel?: string; message?: string }) => {
+      // Log redemption-related raw messages
+      if (messageCloned.message && (
+        messageCloned.message.toLowerCase().includes('redeemed') || 
+        messageCloned.message.toUpperCase().includes('DEPOSIT:')
+      )) {
+        console.log(`🔍 [RAW] Command: ${messageCloned.command}, Message: "${messageCloned.message}"`);
       }
     });
 

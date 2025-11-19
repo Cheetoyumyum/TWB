@@ -1,0 +1,603 @@
+{
+  "userBalances": {
+    "cheetoyumyum": {
+      "username": "cheetoyumyum",
+      "balance": 0,
+      "totalDeposited": 46176040,
+      "totalWon": 2081000,
+      "totalLost": 48256140,
+      "allInWins": 1,
+      "allInLosses": 3,
+      "lastUpdated": "2025-11-19T05:42:12.688Z"
+    }
+  },
+  "transactions": [
+    {
+      "id": 1,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:24:56.575Z"
+    },
+    {
+      "id": 2,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 5000,
+      "description": "Dice roll: 4 vs 1 (won 15000)",
+      "timestamp": "2025-11-19T05:26:30.570Z"
+    },
+    {
+      "id": 3,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 15000,
+      "description": "Dice roll: 4 vs 5 (lost 15000)",
+      "timestamp": "2025-11-19T05:26:36.604Z"
+    },
+    {
+      "id": 4,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 23023020,
+      "description": "Deposited 23023020 channel points",
+      "timestamp": "2025-11-19T05:26:41.363Z"
+    },
+    {
+      "id": 5,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 23023020,
+      "description": "Dice roll: 3 vs 6 (lost 23023020)",
+      "timestamp": "2025-11-19T05:26:46.269Z"
+    },
+    {
+      "id": 6,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 23023020,
+      "description": "Deposited 23023020 channel points",
+      "timestamp": "2025-11-19T05:26:49.583Z"
+    },
+    {
+      "id": 7,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 20000,
+      "description": "Roulette: red on 13 (lost 20000)",
+      "timestamp": "2025-11-19T05:27:51.084Z"
+    },
+    {
+      "id": 8,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 20000,
+      "description": "Roulette: red on 5 (won 40000)",
+      "timestamp": "2025-11-19T05:27:53.773Z"
+    },
+    {
+      "id": 9,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 20000,
+      "description": "Roulette: red on 2 (lost 20000)",
+      "timestamp": "2025-11-19T05:27:55.502Z"
+    },
+    {
+      "id": 10,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 20000,
+      "description": "Roulette: red on 13 (lost 20000)",
+      "timestamp": "2025-11-19T05:27:56.949Z"
+    },
+    {
+      "id": 11,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 20000,
+      "description": "Roulette: red on 19 (won 40000)",
+      "timestamp": "2025-11-19T05:27:58.053Z"
+    },
+    {
+      "id": 12,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 20000,
+      "description": "Roulette: red on 27 (won 40000)",
+      "timestamp": "2025-11-19T05:27:59.012Z"
+    },
+    {
+      "id": 13,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 20000,
+      "description": "Roulette: red on 21 (won 40000)",
+      "timestamp": "2025-11-19T05:27:59.839Z"
+    },
+    {
+      "id": 14,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 20000,
+      "description": "Roulette: red on 20 (lost 20000)",
+      "timestamp": "2025-11-19T05:28:00.811Z"
+    },
+    {
+      "id": 15,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 20000,
+      "description": "Roulette: red on 30 (won 40000)",
+      "timestamp": "2025-11-19T05:28:05.505Z"
+    },
+    {
+      "id": 16,
+      "username": "cheetoyumyum",
+      "type": "withdraw",
+      "amount": 500,
+      "description": "Withdrew 500 points",
+      "timestamp": "2025-11-19T05:28:25.728Z"
+    },
+    {
+      "id": 17,
+      "username": "cheetoyumyum",
+      "type": "purchase",
+      "amount": 500,
+      "description": "Purchased Alert",
+      "timestamp": "2025-11-19T05:28:25.728Z"
+    },
+    {
+      "id": 18,
+      "username": "cheetoyumyum",
+      "type": "withdraw",
+      "amount": 400,
+      "description": "Withdrew 400 points",
+      "timestamp": "2025-11-19T05:35:02.427Z"
+    },
+    {
+      "id": 19,
+      "username": "cheetoyumyum",
+      "type": "purchase",
+      "amount": 400,
+      "description": "Purchased Save Quote",
+      "timestamp": "2025-11-19T05:35:02.428Z"
+    },
+    {
+      "id": 20,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 1000,
+      "description": "RPS: rock vs paper (lost 1000)",
+      "timestamp": "2025-11-19T05:38:13.795Z"
+    },
+    {
+      "id": 21,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 1000,
+      "description": "RPS: rock vs scissors (won 2000)",
+      "timestamp": "2025-11-19T05:38:17.317Z"
+    },
+    {
+      "id": 22,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 5000,
+      "description": "Wheel of Fortune: 1.5x (won 15000)",
+      "timestamp": "2025-11-19T05:38:34.427Z"
+    },
+    {
+      "id": 23,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 10000,
+      "description": "Wheel of Fortune: BUST (lost 10000)",
+      "timestamp": "2025-11-19T05:38:37.127Z"
+    },
+    {
+      "id": 24,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 10000,
+      "description": "Wheel of Fortune: BUST (lost 10000)",
+      "timestamp": "2025-11-19T05:38:38.723Z"
+    },
+    {
+      "id": 25,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 10000,
+      "description": "Wheel of Fortune: BUST (lost 10000)",
+      "timestamp": "2025-11-19T05:38:39.975Z"
+    },
+    {
+      "id": 26,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 10000,
+      "description": "Wheel of Fortune: BUST (lost 10000)",
+      "timestamp": "2025-11-19T05:38:41.165Z"
+    },
+    {
+      "id": 27,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 5000,
+      "description": "Wheel of Fortune: 1.5x (won 15000)",
+      "timestamp": "2025-11-19T05:38:42.287Z"
+    },
+    {
+      "id": 28,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 10000,
+      "description": "Wheel of Fortune: BUST (lost 10000)",
+      "timestamp": "2025-11-19T05:38:43.445Z"
+    },
+    {
+      "id": 29,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 10000,
+      "description": "Wheel of Fortune: BUST (lost 10000)",
+      "timestamp": "2025-11-19T05:38:44.475Z"
+    },
+    {
+      "id": 30,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 10000,
+      "description": "Wheel of Fortune: BUST (lost 10000)",
+      "timestamp": "2025-11-19T05:38:45.297Z"
+    },
+    {
+      "id": 31,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 10000,
+      "description": "Wheel of Fortune: 2x (won 20000)",
+      "timestamp": "2025-11-19T05:38:46.116Z"
+    },
+    {
+      "id": 32,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 40000,
+      "description": "Wheel of Fortune: 5x (won 50000)",
+      "timestamp": "2025-11-19T05:38:46.667Z"
+    },
+    {
+      "id": 33,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 40000,
+      "description": "Wheel of Fortune: 5x (won 50000)",
+      "timestamp": "2025-11-19T05:38:47.629Z"
+    },
+    {
+      "id": 34,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 10000,
+      "description": "Wheel of Fortune: 2x (won 20000)",
+      "timestamp": "2025-11-19T05:38:49.112Z"
+    },
+    {
+      "id": 35,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 5000,
+      "description": "Wheel of Fortune: 1.5x (won 15000)",
+      "timestamp": "2025-11-19T05:38:50.384Z"
+    },
+    {
+      "id": 36,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 100000,
+      "description": "Slots: ⭐ 🍒 ⭐ (won 200000)",
+      "timestamp": "2025-11-19T05:38:56.556Z"
+    },
+    {
+      "id": 37,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 100000,
+      "description": "Slots: 🍉 🍇 🍇 (won 200000)",
+      "timestamp": "2025-11-19T05:38:58.684Z"
+    },
+    {
+      "id": 38,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 100000,
+      "description": "Slots: 💎 🍋 🍒 (lost 100000)",
+      "timestamp": "2025-11-19T05:39:00.308Z"
+    },
+    {
+      "id": 39,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 100000,
+      "description": "Slots: 🍋 🍉 🍇 (lost 100000)",
+      "timestamp": "2025-11-19T05:39:01.653Z"
+    },
+    {
+      "id": 40,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 100000,
+      "description": "Slots: 🍒 💎 🍇 (lost 100000)",
+      "timestamp": "2025-11-19T05:39:02.845Z"
+    },
+    {
+      "id": 41,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 100000,
+      "description": "Slots: 🍋 💎 🍊 (lost 100000)",
+      "timestamp": "2025-11-19T05:39:03.835Z"
+    },
+    {
+      "id": 42,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 100000,
+      "description": "Slots: ⭐ 🍒 🍊 (lost 100000)",
+      "timestamp": "2025-11-19T05:39:04.894Z"
+    },
+    {
+      "id": 43,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 100000,
+      "description": "Slots: 🍋 🍇 🍒 (lost 100000)",
+      "timestamp": "2025-11-19T05:39:05.890Z"
+    },
+    {
+      "id": 44,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 100000,
+      "description": "Slots: 💎 ⭐ 💎 (won 200000)",
+      "timestamp": "2025-11-19T05:39:06.788Z"
+    },
+    {
+      "id": 45,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 100000,
+      "description": "Slots: 🍇 🍉 🍇 (won 200000)",
+      "timestamp": "2025-11-19T05:39:07.641Z"
+    },
+    {
+      "id": 46,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 100000,
+      "description": "Slots: 🍒 🍋 🍋 (won 200000)",
+      "timestamp": "2025-11-19T05:39:08.782Z"
+    },
+    {
+      "id": 47,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 100000,
+      "description": "Slots: 🍇 🍒 ⭐ (lost 100000)",
+      "timestamp": "2025-11-19T05:39:10.426Z"
+    },
+    {
+      "id": 48,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 100000,
+      "description": "Slots: 💎 🍊 🍒 (lost 100000)",
+      "timestamp": "2025-11-19T05:39:12.360Z"
+    },
+    {
+      "id": 49,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 100000,
+      "description": "Slots: 🍊 🍇 🍇 (won 200000)",
+      "timestamp": "2025-11-19T05:39:13.409Z"
+    },
+    {
+      "id": 50,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 100000,
+      "description": "Slots: 🍒 🍊 ⭐ (lost 100000)",
+      "timestamp": "2025-11-19T05:39:15.742Z"
+    },
+    {
+      "id": 51,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 900000,
+      "description": "Slots: 🍇 🍇 🍇 (JACKPOT! won 1000000)",
+      "timestamp": "2025-11-19T05:39:16.808Z"
+    },
+    {
+      "id": 52,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 23687120,
+      "description": "Coin flip: heads (lost 23687120)",
+      "timestamp": "2025-11-19T05:39:34.087Z"
+    },
+    {
+      "id": 53,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:41:47.681Z"
+    },
+    {
+      "id": 54,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:41:49.864Z"
+    },
+    {
+      "id": 55,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:41:50.359Z"
+    },
+    {
+      "id": 56,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:41:50.944Z"
+    },
+    {
+      "id": 57,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:41:51.456Z"
+    },
+    {
+      "id": 58,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:41:51.848Z"
+    },
+    {
+      "id": 59,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:41:52.170Z"
+    },
+    {
+      "id": 60,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:41:52.471Z"
+    },
+    {
+      "id": 61,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:41:52.740Z"
+    },
+    {
+      "id": 62,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:41:53.009Z"
+    },
+    {
+      "id": 63,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:41:53.226Z"
+    },
+    {
+      "id": 64,
+      "username": "cheetoyumyum",
+      "type": "deposit",
+      "amount": 10000,
+      "description": "Deposited 10000 channel points",
+      "timestamp": "2025-11-19T05:41:53.447Z"
+    },
+    {
+      "id": 65,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 120000,
+      "description": "Blackjack: 19 vs 18 (won 240000)",
+      "timestamp": "2025-11-19T05:42:01.538Z"
+    },
+    {
+      "id": 66,
+      "username": "cheetoyumyum",
+      "type": "win",
+      "amount": 240000,
+      "description": "Blackjack: Dealer bust (won 480000)",
+      "timestamp": "2025-11-19T05:42:08.265Z"
+    },
+    {
+      "id": 67,
+      "username": "cheetoyumyum",
+      "type": "loss",
+      "amount": 480000,
+      "description": "Blackjack: Bust with 26 (lost 480000)",
+      "timestamp": "2025-11-19T05:42:12.688Z"
+    }
+  ],
+  "chatContext": [
+    {
+      "username": "cheetoyumyum",
+      "message": "ok",
+      "response": "peepoVanish yaaas lets go cheeto",
+      "timestamp": "2025-11-19T05:25:35.899Z"
+    },
+    {
+      "username": "cheetoyumyum",
+      "message": "dude?",
+      "response": "AYOOO Wut u need, cheeto?",
+      "timestamp": "2025-11-19T05:35:20.550Z"
+    },
+    {
+      "username": "cheetoyumyum",
+      "message": "????",
+      "response": "LOL u mad its just an emoji",
+      "timestamp": "2025-11-19T05:35:25.889Z"
+    },
+    {
+      "username": "cheetoyumyum",
+      "message": "@sundramix sdiybt",
+      "response": "pepeS Cheeto, we know, it's a classic",
+      "timestamp": "2025-11-19T05:35:46.447Z"
+    },
+    {
+      "username": "cheetoyumyum",
+      "message": "stinky bot",
+      "response": "stinky bot indeed",
+      "timestamp": "2025-11-19T05:36:10.194Z"
+    },
+    {
+      "username": "cheetoyumyum",
+      "message": "?????????",
+      "response": "WHAT",
+      "timestamp": "2025-11-19T05:36:39.670Z"
+    },
+    {
+      "username": "cheetoyumyum",
+      "message": "ok?",
+      "response": "AYOOO NO",
+      "timestamp": "2025-11-19T05:37:07.365Z"
+    },
+    {
+      "username": "cheetoyumyum",
+      "message": "Do you know what sdiybt means?",
+      "response": "groupJork idk wut u mean u just made that up",
+      "timestamp": "2025-11-19T05:37:24.567Z"
+    }
+  ],
+  "nextTransactionId": 68
+}

@@ -1,16 +1,20 @@
 import express, { Request, Response } from 'express';
+import crypto from 'crypto';
 import { TwitchBot } from '../bot/twitchBot';
 
 export class WebhookServer {
   private app: express.Application;
   private bot: TwitchBot;
   private port: number;
+  private webhookSecret?: string;
 
-  constructor(bot: TwitchBot, port: number = 3000) {
+  constructor(bot: TwitchBot, port: number = 3000, webhookSecret?: string) {
     this.bot = bot;
     this.port = port;
+    this.webhookSecret = webhookSecret;
     this.app = express();
-    this.app.use(express.json());
+    // We need raw body for signature verification, so we'll handle JSON parsing manually
+    this.app.use(express.raw({ type: 'application/json' }));
     this.setupRoutes();
   }
 
@@ -24,7 +28,36 @@ export class WebhookServer {
     // This endpoint should be configured in Twitch EventSub
     this.app.post('/webhook/channel-points', (req: Request, res: Response) => {
       try {
-        const event = req.body;
+        // Verify webhook signature if secret is provided
+        if (this.webhookSecret) {
+          const signature = req.headers['twitch-eventsub-message-signature'] as string;
+          const messageId = req.headers['twitch-eventsub-message-id'] as string;
+          const timestamp = req.headers['twitch-eventsub-message-timestamp'] as string;
+          
+          if (!signature || !messageId || !timestamp) {
+            console.warn('⚠️  Missing webhook signature headers - request may not be from Twitch');
+            // Continue anyway for development, but log warning
+          } else {
+            const message = messageId + timestamp + req.body.toString();
+            const hmac = crypto.createHmac('sha256', this.webhookSecret);
+            hmac.update(message);
+            const expectedSignature = 'sha256=' + hmac.digest('hex');
+            
+            if (signature !== expectedSignature) {
+              console.error('❌ Webhook signature verification failed - rejecting request');
+              return res.status(403).json({ error: 'Invalid signature' });
+            }
+          }
+        }
+
+        // Parse JSON body (we used raw body for signature verification)
+        const event = JSON.parse(req.body.toString());
+
+        // Handle verification challenge (Twitch sends this when creating subscription)
+        if (event.challenge) {
+          console.log('✅ Webhook verification challenge received and responded to');
+          return res.status(200).send(event.challenge);
+        }
 
         // Handle different webhook formats
         if (event.subscription?.type === 'channel.channel_points_custom_reward_redemption.add') {
@@ -34,18 +67,14 @@ export class WebhookServer {
           const rewardCost = redemption.reward?.cost || 0;
 
           if (username && redemptionTitle) {
+            console.log(`📥 Webhook: ${username} redeemed ${redemptionTitle} (${rewardCost} points)`);
             this.bot.handleChannelPointsRedemption(username, redemptionTitle, rewardCost);
             res.status(200).json({ received: true });
           } else {
             res.status(400).json({ error: 'Missing required fields' });
           }
         } else {
-          // Handle verification challenge
-          if (event.challenge) {
-            res.status(200).send(event.challenge);
-          } else {
-            res.status(200).json({ received: true });
-          }
+          res.status(200).json({ received: true });
         }
       } catch (error) {
         console.error('Webhook error:', error);
@@ -53,8 +82,8 @@ export class WebhookServer {
       }
     });
 
-    // Manual trigger endpoint for testing
-    this.app.post('/trigger/deposit', (req: Request, res: Response) => {
+    // Manual trigger endpoint for testing (uses JSON body)
+    this.app.post('/trigger/deposit', express.json(), (req: Request, res: Response) => {
       const { username, amount } = req.body;
       if (!username || !amount) {
         return res.status(400).json({ error: 'Missing username or amount' });

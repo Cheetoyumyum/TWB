@@ -9,11 +9,34 @@ export interface GameResult {
   isAllIn?: boolean;
 }
 
+interface BlackjackGame {
+  username: string;
+  bet: number;
+  userCards: number[];
+  dealerCards: number[];
+  isAllIn: boolean;
+  startedAt: number;
+}
+
 export class GamesModule {
   private db: BotDatabase;
+  private activeBlackjackGames: Map<string, BlackjackGame> = new Map(); // username -> game state
 
   constructor(db: BotDatabase) {
     this.db = db;
+    // Clean up old games every 5 minutes (games expire after 2 minutes of inactivity)
+    setInterval(() => this.cleanupOldGames(), 5 * 60 * 1000);
+  }
+
+  private cleanupOldGames(): void {
+    const now = Date.now();
+    const twoMinutes = 2 * 60 * 1000;
+    for (const [username, game] of this.activeBlackjackGames.entries()) {
+      if (now - game.startedAt > twoMinutes) {
+        this.activeBlackjackGames.delete(username);
+        console.log(`Cleaned up expired blackjack game for ${username}`);
+      }
+    }
   }
 
   private validateMinBet(gameId: string, bet: number): { valid: boolean; message?: string } {
@@ -255,7 +278,25 @@ export class GamesModule {
     }
   }
 
-  blackjack(username: string, bet: number): GameResult {
+  blackjack(username: string, bet: number, action?: 'hit' | 'stand'): GameResult {
+    const key = username.toLowerCase();
+    
+    // Check if user has an active game
+    const activeGame = this.activeBlackjackGames.get(key);
+    
+    if (activeGame && action) {
+      // Continue existing game
+      return this.handleBlackjackAction(username, action, activeGame);
+    } else if (activeGame && !action) {
+      // User has active game but didn't specify action
+      const userTotal = this.calculateHand(activeGame.userCards);
+      return {
+        success: false,
+        message: `@${username} You have an active game! Your hand: ${this.formatCards(activeGame.userCards)} (${userTotal}). Use !hit or !stand`,
+      };
+    }
+    
+    // Start new game
     const minBetCheck = this.validateMinBet('blackjack', bet);
     if (!minBetCheck.valid) {
       return {
@@ -312,66 +353,121 @@ export class GamesModule {
       };
     }
 
-    // Simple auto-play: user hits until 17+, dealer hits until 17+
-    let userHand = [...userCards];
-    while (this.calculateHand(userHand) < 17) {
-      userHand.push(this.drawCard());
-      if (this.calculateHand(userHand) > 21) break; // Bust
-    }
+    // Deduct bet and start interactive game
+    this.db.addLoss(username, bet, `Blackjack: Started game (bet ${bet})`, false);
+    
+    const game: BlackjackGame = {
+      username,
+      bet,
+      userCards,
+      dealerCards,
+      isAllIn,
+      startedAt: Date.now(),
+    };
+    
+    this.activeBlackjackGames.set(key, game);
+    
+    const userTotalDisplay = this.calculateHand(userCards);
+    return {
+      success: true,
+      message: `@${username} 🃏 Game started! Your hand: ${this.formatCards(userCards)} (${userTotalDisplay}) | Dealer: ${this.formatCards([dealerCards[0]])}? | Use !hit or !stand`,
+      newBalance: (this.db.getUserBalance(username)?.balance || 0),
+    };
+  }
 
-    let dealerHand = [...dealerCards];
-    while (this.calculateHand(dealerHand) < 17) {
-      dealerHand.push(this.drawCard());
-      if (this.calculateHand(dealerHand) > 21) break; // Bust
-    }
+  private handleBlackjackAction(username: string, action: 'hit' | 'stand', game: BlackjackGame): GameResult {
+    const key = username.toLowerCase();
+    
+    if (action === 'hit') {
+      // Draw a card
+      game.userCards.push(this.drawCard());
+      const userTotal = this.calculateHand(game.userCards);
+      
+      if (userTotal > 21) {
+        // Bust - game over
+        this.activeBlackjackGames.delete(key);
+        this.db.addLoss(game.username, game.bet, `Blackjack: Bust with ${userTotal} (lost ${game.bet})`, game.isAllIn);
+        const newBalance = (this.db.getUserBalance(username)?.balance || 0);
+        const allInMsg = game.isAllIn ? ' HAHAHAHA YOU LOST IT ALL! 😂💀' : '';
+        return {
+          success: true,
+          message: `@${username} 🃏 BUST! ${this.formatCards(game.userCards)} (${userTotal})${allInMsg} You lose ${game.bet} points. New balance: ${newBalance}`,
+          newBalance: newBalance,
+          isAllIn: game.isAllIn,
+        };
+      } else {
+        // Still in game
+        return {
+          success: true,
+          message: `@${username} 🃏 Hit! Your hand: ${this.formatCards(game.userCards)} (${userTotal}) | Dealer: ${this.formatCards([game.dealerCards[0]])}? | Use !hit or !stand`,
+          newBalance: (this.db.getUserBalance(username)?.balance || 0),
+        };
+      }
+    } else if (action === 'stand') {
+      // Dealer plays
+      this.activeBlackjackGames.delete(key);
+      
+      let dealerHand = [...game.dealerCards];
+      while (this.calculateHand(dealerHand) < 17) {
+        dealerHand.push(this.drawCard());
+        if (this.calculateHand(dealerHand) > 21) break; // Bust
+      }
 
-    const finalUserTotal = this.calculateHand(userHand);
-    const finalDealerTotal = this.calculateHand(dealerHand);
+      const finalUserTotal = this.calculateHand(game.userCards);
+      const finalDealerTotal = this.calculateHand(dealerHand);
 
-    // Determine winner
-    if (finalUserTotal > 21) {
-      this.db.addLoss(username, bet, `Blackjack: Bust with ${finalUserTotal} (lost ${bet})`);
-      const newBalance = (this.db.getUserBalance(username)?.balance || 0);
-      return {
-        success: true,
-        message: `@${username} 🃏 BUST! ${this.formatCards(userHand)} (${finalUserTotal}) vs ${this.formatCards(dealerHand)} (${finalDealerTotal}). You lose ${bet} points. New balance: ${newBalance}`,
-        newBalance: newBalance,
-      };
-    } else if (finalDealerTotal > 21) {
-      const winnings = bet * 2;
-      this.db.addWin(username, bet, `Blackjack: Dealer bust (won ${winnings})`);
-      const newBalance = (this.db.getUserBalance(username)?.balance || 0);
-      return {
-        success: true,
-        message: `@${username} 🃏 Dealer busts! ${this.formatCards(userHand)} (${finalUserTotal}) vs ${this.formatCards(dealerHand)} (${finalDealerTotal}). You win ${winnings} points! New balance: ${newBalance}`,
-        winnings: winnings,
-        newBalance: newBalance,
-      };
-    } else if (finalUserTotal > finalDealerTotal) {
-      const winnings = bet * 2;
-      this.db.addWin(username, bet, `Blackjack: ${finalUserTotal} vs ${finalDealerTotal} (won ${winnings})`);
-      const newBalance = (this.db.getUserBalance(username)?.balance || 0);
-      return {
-        success: true,
-        message: `@${username} 🃏 You win! ${this.formatCards(userHand)} (${finalUserTotal}) vs ${this.formatCards(dealerHand)} (${finalDealerTotal}). You win ${winnings} points! New balance: ${newBalance}`,
-        winnings: winnings,
-        newBalance: newBalance,
-      };
-    } else if (finalUserTotal < finalDealerTotal) {
-      this.db.addLoss(username, bet, `Blackjack: ${finalUserTotal} vs ${finalDealerTotal} (lost ${bet})`);
-      const newBalance = (this.db.getUserBalance(username)?.balance || 0);
-      return {
-        success: true,
-        message: `@${username} 🃏 You lose! ${this.formatCards(userHand)} (${finalUserTotal}) vs ${this.formatCards(dealerHand)} (${finalDealerTotal}). You lose ${bet} points. New balance: ${newBalance}`,
-        newBalance: newBalance,
-      };
-    } else {
-      return {
-        success: true,
-        message: `@${username} 🃏 Push! ${this.formatCards(userHand)} (${finalUserTotal}) vs ${this.formatCards(dealerHand)} (${finalDealerTotal}). Your bet is returned.`,
-        newBalance: user.balance,
-      };
+      // Determine winner
+      if (finalDealerTotal > 21) {
+        const winnings = game.bet * 2;
+        this.db.addWin(game.username, game.bet, `Blackjack: Dealer bust (won ${winnings})`, game.isAllIn);
+        const newBalance = (this.db.getUserBalance(username)?.balance || 0);
+        const allInMsg = game.isAllIn ? ' ALL-IN WIN! 🚀' : '';
+        return {
+          success: true,
+          message: `@${username} 🃏 Dealer busts! ${this.formatCards(game.userCards)} (${finalUserTotal}) vs ${this.formatCards(dealerHand)} (${finalDealerTotal}).${allInMsg} You win ${winnings} points! New balance: ${newBalance}`,
+          winnings: winnings,
+          newBalance: newBalance,
+          isAllIn: game.isAllIn,
+        };
+      } else if (finalUserTotal > finalDealerTotal) {
+        const winnings = game.bet * 2;
+        this.db.addWin(game.username, game.bet, `Blackjack: ${finalUserTotal} vs ${finalDealerTotal} (won ${winnings})`, game.isAllIn);
+        const newBalance = (this.db.getUserBalance(username)?.balance || 0);
+        const allInMsg = game.isAllIn ? ' ALL-IN WIN! 🚀' : '';
+        return {
+          success: true,
+          message: `@${username} 🃏 You win! ${this.formatCards(game.userCards)} (${finalUserTotal}) vs ${this.formatCards(dealerHand)} (${finalDealerTotal}).${allInMsg} You win ${winnings} points! New balance: ${newBalance}`,
+          winnings: winnings,
+          newBalance: newBalance,
+          isAllIn: game.isAllIn,
+        };
+      } else if (finalUserTotal < finalDealerTotal) {
+        this.db.addLoss(game.username, game.bet, `Blackjack: ${finalUserTotal} vs ${finalDealerTotal} (lost ${game.bet})`, game.isAllIn);
+        const newBalance = (this.db.getUserBalance(username)?.balance || 0);
+        const allInMsg = game.isAllIn ? ' HAHAHAHA YOU LOST IT ALL! 😂💀' : '';
+        return {
+          success: true,
+          message: `@${username} 🃏 You lose! ${this.formatCards(game.userCards)} (${finalUserTotal}) vs ${this.formatCards(dealerHand)} (${finalDealerTotal}).${allInMsg} You lose ${game.bet} points. New balance: ${newBalance}`,
+          newBalance: newBalance,
+          isAllIn: game.isAllIn,
+        };
+      } else {
+        // Push - return bet
+        this.db.addWin(game.username, 0, `Blackjack: Push (${finalUserTotal} vs ${finalDealerTotal})`, false);
+        const newBalance = (this.db.getUserBalance(username)?.balance || 0) + game.bet;
+        this.db.createOrUpdateBalance(username, game.bet);
+        return {
+          success: true,
+          message: `@${username} 🃏 Push! ${this.formatCards(game.userCards)} (${finalUserTotal}) vs ${this.formatCards(dealerHand)} (${finalDealerTotal}). Your bet is returned.`,
+          newBalance: newBalance,
+        };
+      }
     }
+    
+    return {
+      success: false,
+      message: `@${username} Invalid action. Use !hit or !stand`,
+    };
   }
 
   private drawCard(): number {
