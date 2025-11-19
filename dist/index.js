@@ -48,18 +48,47 @@ async function main() {
         console.error('\nPlease check your .env file.');
         process.exit(1);
     }
+    // Extract 7TV user ID from URL if provided, or use direct ID
+    let seventvUserId = process.env.SEVENTV_USER_ID;
+    if (seventvUserId) {
+        // If it's a full URL, extract the user ID
+        if (seventvUserId.includes('7tv.app/users/')) {
+            const match = seventvUserId.match(/7tv\.app\/users\/([^\/\s]+)/);
+            if (match) {
+                seventvUserId = match[1];
+            }
+        }
+    }
     const config = {
         username: process.env.TWITCH_BOT_USERNAME,
         oauthToken: process.env.TWITCH_OAUTH_TOKEN,
         channel: process.env.TWITCH_CHANNEL,
         openaiApiKey: process.env.OPENAI_API_KEY,
+        groqApiKey: process.env.GROQ_API_KEY,
+        huggingfaceApiKey: process.env.HUGGINGFACE_API_KEY,
         dbPath: process.env.DATABASE_PATH || './data/bot.json',
+        seventvUserId: seventvUserId,
     };
+    // Determine AI provider status
+    let aiStatus = 'Disabled (using fallback)';
+    if (config.openaiApiKey) {
+        aiStatus = 'Enabled (OpenAI)';
+    }
+    else if (config.groqApiKey) {
+        aiStatus = 'Enabled (Groq - Free)';
+    }
+    else if (config.huggingfaceApiKey) {
+        aiStatus = 'Enabled (Hugging Face - Free)';
+    }
     console.log('🤖 Starting Twitch Engagement Bot...');
     console.log(`📺 Channel: ${config.channel}`);
     console.log(`👤 Bot: ${config.username}`);
     console.log(`💾 Database: ${config.dbPath}`);
-    console.log(`🤖 AI: ${config.openaiApiKey ? 'Enabled' : 'Disabled (using fallback)'}\n`);
+    console.log(`🤖 AI: ${aiStatus}`);
+    if (seventvUserId) {
+        console.log(`🎭 7TV User ID: ${seventvUserId}`);
+    }
+    console.log('');
     // Create and start bot
     const bot = new twitchBot_1.TwitchBot(config);
     try {

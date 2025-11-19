@@ -13,7 +13,10 @@ export interface BotConfig {
   oauthToken: string;
   channel: string;
   openaiApiKey?: string;
+  groqApiKey?: string;
+  huggingfaceApiKey?: string;
   dbPath: string;
+  seventvUserId?: string;
 }
 
 export class TwitchBot {
@@ -41,9 +44,16 @@ export class TwitchBot {
     // Initialize modules
     this.games = new GamesModule(this.db);
     this.actions = new ActionsModule(this.db);
-    this.sevenTV = new SevenTVService();
+    this.sevenTV = new SevenTVService(config.seventvUserId);
     this.adHandler = new AdHandler();
-    this.chatHandler = new ChatHandler(config.openaiApiKey, this.db, this.sevenTV, this.channel);
+    this.chatHandler = new ChatHandler(
+      config.openaiApiKey,
+      this.db,
+      this.sevenTV,
+      this.channel,
+      config.groqApiKey,
+      config.huggingfaceApiKey
+    );
     this.channelPointsHandler = new ChannelPointsHandler(this.db);
     this.commandHandler = new CommandHandler(this.db, this.games, this.actions, this.sevenTV, this.channel, this.adHandler);
     

@@ -27,6 +27,11 @@ export class SevenTVService {
   private emoteCache: Map<string, SevenTVEmote> = new Map();
   private cacheExpiry: Map<string, number> = new Map();
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private directUserId?: string; // Direct 7TV user ID if provided
+
+  constructor(directUserId?: string) {
+    this.directUserId = directUserId;
+  }
 
   /**
    * Get user ID from username
@@ -58,11 +63,18 @@ export class SevenTVService {
     }
 
     try {
-      // Get user ID first
-      const userId = await this.getUserId(channelName);
-      if (!userId) {
-        console.warn(`7TV: User ${channelName} not found or has no 7TV account`);
-        return [];
+      // Use direct user ID if provided, otherwise look up by username
+      let userId: string | null = null;
+      
+      if (this.directUserId) {
+        userId = this.directUserId;
+        console.log(`7TV: Using direct user ID: ${userId}`);
+      } else {
+        userId = await this.getUserId(channelName);
+        if (!userId) {
+          console.warn(`7TV: User ${channelName} not found or has no 7TV account`);
+          return [];
+        }
       }
 
       // Get user's emote sets

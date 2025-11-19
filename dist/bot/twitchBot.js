@@ -25,9 +25,9 @@ class TwitchBot {
         // Initialize modules
         this.games = new games_1.GamesModule(this.db);
         this.actions = new actions_1.ActionsModule(this.db);
-        this.sevenTV = new sevenTV_1.SevenTVService();
+        this.sevenTV = new sevenTV_1.SevenTVService(config.seventvUserId);
         this.adHandler = new adHandler_1.AdHandler();
-        this.chatHandler = new chatHandler_1.ChatHandler(config.openaiApiKey, this.db, this.sevenTV, this.channel);
+        this.chatHandler = new chatHandler_1.ChatHandler(config.openaiApiKey, this.db, this.sevenTV, this.channel, config.groqApiKey, config.huggingfaceApiKey);
         this.channelPointsHandler = new channelPoints_1.ChannelPointsHandler(this.db);
         this.commandHandler = new commands_1.CommandHandler(this.db, this.games, this.actions, this.sevenTV, this.channel, this.adHandler);
         // Set up callbacks

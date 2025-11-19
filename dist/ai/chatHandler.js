@@ -5,12 +5,27 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChatHandler = void 0;
 const openai_1 = __importDefault(require("openai"));
+const axios_1 = __importDefault(require("axios"));
 class ChatHandler {
-    constructor(apiKey, db, sevenTV, channel) {
+    constructor(openaiApiKey, db, sevenTV, channel, groqApiKey, huggingfaceApiKey) {
         this.openai = null;
         this.maxContextLength = 10;
-        if (apiKey) {
-            this.openai = new openai_1.default({ apiKey });
+        this.aiProvider = 'none';
+        // Determine which AI provider to use (priority: OpenAI > Groq > Hugging Face > None)
+        if (openaiApiKey) {
+            this.openai = new openai_1.default({ apiKey: openaiApiKey });
+            this.aiProvider = 'openai';
+        }
+        else if (groqApiKey) {
+            this.groqApiKey = groqApiKey;
+            this.aiProvider = 'groq';
+        }
+        else if (huggingfaceApiKey) {
+            this.huggingfaceApiKey = huggingfaceApiKey;
+            this.aiProvider = 'huggingface';
+        }
+        else {
+            this.aiProvider = 'none';
         }
         this.db = db;
         this.sevenTV = sevenTV;
@@ -31,7 +46,7 @@ class ChatHandler {
         if (conversationHistory.length > this.maxContextLength) {
             conversationHistory.shift();
         }
-        if (!this.openai) {
+        if (this.aiProvider === 'none') {
             // Fallback to simple responses if no API key
             return await this.getFallbackResponse(context);
         }
@@ -60,16 +75,26 @@ CRITICAL RULES:
 You're watching the stream and chatting. That's it. Be entertaining and funny, but stay in character as a Twitch viewer.
 
 User ${context.username} said: "${context.message}"`;
-            const response = await this.openai.chat.completions.create({
-                model: 'gpt-3.5-turbo',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    ...conversationHistory.slice(-5), // Last 5 messages for context
-                ],
-                max_tokens: 150,
-                temperature: 0.8,
-            });
-            let botResponse = response.choices[0]?.message?.content?.trim() || null;
+            let botResponse = null;
+            // Use the appropriate AI provider
+            if (this.aiProvider === 'openai' && this.openai) {
+                const response = await this.openai.chat.completions.create({
+                    model: 'gpt-3.5-turbo',
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        ...conversationHistory.slice(-5), // Last 5 messages for context
+                    ],
+                    max_tokens: 150,
+                    temperature: 0.8,
+                });
+                botResponse = response.choices[0]?.message?.content?.trim() || null;
+            }
+            else if (this.aiProvider === 'groq' && this.groqApiKey) {
+                botResponse = await this.generateGroqResponse(systemPrompt, conversationHistory);
+            }
+            else if (this.aiProvider === 'huggingface' && this.huggingfaceApiKey) {
+                botResponse = await this.generateHuggingFaceResponse(systemPrompt, conversationHistory);
+            }
             // Additional safety check - if response seems too long or formal, replace it
             if (botResponse && (botResponse.length > 200 || botResponse.includes('recipe') || botResponse.includes('instructions'))) {
                 botResponse = this.getSnarkyResponse(context);
@@ -104,14 +129,51 @@ User ${context.username} said: "${context.message}"`;
         return this.contextMemory.get(username);
     }
     async getFallbackResponse(context) {
-        const responses = [
-            `yo ${context.username} what's good`,
-            `${context.username} in the chat!`,
-            `ayy ${context.username} 👋`,
-            `what up ${context.username}`,
-            `${context.username} pog`,
-            `hey ${context.username} o7`,
-        ];
+        const lowerMessage = context.message.toLowerCase();
+        // Context-aware fallback responses
+        let responses = [];
+        if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
+            responses = [
+                `yo ${context.username} what's good`,
+                `hey ${context.username}! 👋`,
+                `ayy ${context.username} in the chat!`,
+                `what up ${context.username}`,
+            ];
+        }
+        else if (lowerMessage.includes('pog') || lowerMessage.includes('poggers')) {
+            responses = [
+                `${context.username} POGGERS`,
+                `pog ${context.username} pog`,
+                `${context.username} that was sick`,
+            ];
+        }
+        else if (lowerMessage.includes('lol') || lowerMessage.includes('lmao') || lowerMessage.includes('haha')) {
+            responses = [
+                `lmao ${context.username}`,
+                `${context.username} fr fr`,
+                `dead ${context.username} 💀`,
+            ];
+        }
+        else if (lowerMessage.includes('?')) {
+            responses = [
+                `idk ${context.username} but that's wild`,
+                `${context.username} good question tbh`,
+                `hmm ${context.username} not sure`,
+                `${context.username} that's a tough one`,
+            ];
+        }
+        else {
+            responses = [
+                `yo ${context.username} what's good`,
+                `${context.username} in the chat!`,
+                `ayy ${context.username} 👋`,
+                `what up ${context.username}`,
+                `${context.username} pog`,
+                `hey ${context.username} o7`,
+                `${context.username} vibing`,
+                `fr ${context.username} fr`,
+            ];
+        }
         let response = responses[Math.floor(Math.random() * responses.length)];
         // Add random 7TV emote sometimes
         if (Math.random() < 0.4) {
@@ -132,6 +194,72 @@ User ${context.username} said: "${context.message}"`;
             `${context.username} you good?`,
         ];
         return responses[Math.floor(Math.random() * responses.length)];
+    }
+    /**
+     * Generate response using Groq API (free tier available)
+     */
+    async generateGroqResponse(systemPrompt, conversationHistory) {
+        try {
+            const response = await axios_1.default.post('https://api.groq.com/openai/v1/chat/completions', {
+                model: 'llama-3.1-8b-instant', // Fast and free
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    ...conversationHistory.slice(-5),
+                ],
+                max_tokens: 150,
+                temperature: 0.8,
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${this.groqApiKey}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            return response.data.choices[0]?.message?.content?.trim() || null;
+        }
+        catch (error) {
+            console.error('Groq API error:', error.response?.data || error.message);
+            return null;
+        }
+    }
+    /**
+     * Generate response using Hugging Face Inference API (free tier available)
+     */
+    async generateHuggingFaceResponse(systemPrompt, conversationHistory) {
+        try {
+            // Use a chat model from Hugging Face
+            const model = 'microsoft/DialoGPT-medium'; // Free alternative
+            const lastMessage = conversationHistory[conversationHistory.length - 1]?.content || '';
+            const response = await axios_1.default.post(`https://api-inference.huggingface.co/models/${model}`, {
+                inputs: {
+                    past_user_inputs: conversationHistory
+                        .filter(m => m.role === 'user')
+                        .slice(-3)
+                        .map(m => m.content),
+                    generated_responses: conversationHistory
+                        .filter(m => m.role === 'assistant')
+                        .slice(-3)
+                        .map(m => m.content),
+                    text: lastMessage,
+                },
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${this.huggingfaceApiKey}`,
+                    'Content-Type': 'application/json',
+                },
+            });
+            // Hugging Face returns different format, extract response
+            const generatedText = response.data?.generated_text || response.data?.text || null;
+            if (generatedText && generatedText.length > 200) {
+                // Truncate if too long
+                return generatedText.substring(0, 200).trim();
+            }
+            return generatedText;
+        }
+        catch (error) {
+            console.error('Hugging Face API error:', error.response?.data || error.message);
+            // Hugging Face models might be loading, fallback
+            return null;
+        }
     }
     shouldRespond(message) {
         // Respond to messages that:

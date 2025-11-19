@@ -6,12 +6,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SevenTVService = void 0;
 const axios_1 = __importDefault(require("axios"));
 class SevenTVService {
-    constructor() {
+    constructor(directUserId) {
         this.baseURL = 'https://7tv.io/v3';
         this.channelEmotes = new Map();
         this.emoteCache = new Map();
         this.cacheExpiry = new Map();
         this.CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+        this.directUserId = directUserId;
     }
     /**
      * Get user ID from username
@@ -41,11 +42,18 @@ class SevenTVService {
             return cached;
         }
         try {
-            // Get user ID first
-            const userId = await this.getUserId(channelName);
-            if (!userId) {
-                console.warn(`7TV: User ${channelName} not found or has no 7TV account`);
-                return [];
+            // Use direct user ID if provided, otherwise look up by username
+            let userId = null;
+            if (this.directUserId) {
+                userId = this.directUserId;
+                console.log(`7TV: Using direct user ID: ${userId}`);
+            }
+            else {
+                userId = await this.getUserId(channelName);
+                if (!userId) {
+                    console.warn(`7TV: User ${channelName} not found or has no 7TV account`);
+                    return [];
+                }
             }
             // Get user's emote sets
             const userResponse = await axios_1.default.get(`${this.baseURL}/users/${userId}`);
