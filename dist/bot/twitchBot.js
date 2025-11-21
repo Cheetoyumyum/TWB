@@ -7,6 +7,7 @@ exports.TwitchBot = void 0;
 const tmi_js_1 = __importDefault(require("tmi.js"));
 const database_1 = require("../database/database");
 const chatHandler_1 = require("../ai/chatHandler");
+const triviaGenerator_1 = require("../ai/triviaGenerator");
 const channelPoints_1 = require("../channelPoints/channelPoints");
 const commands_1 = require("../commands/commands");
 const games_1 = require("../games/games");
@@ -33,6 +34,32 @@ const DEFAULT_EMOTE_NAMES = [
     'HeyGuys',
     'Kreygasm',
 ];
+const TRIVIA_QUESTIONS = [
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the capital of France?', answers: ['paris'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: What gas do plants breathe in that humans breathe out?', answers: ['carbon dioxide', 'co2'], source: 'preset' },
+    { prompt: '🧩 Riddle time! I speak without a mouth and hear without ears. What am I?', answers: ['echo'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: Which planet is known as the Red Planet?', answers: ['mars'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: What instrument has keys, pedals, and strings?', answers: ['piano'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: Which animal is known as the King of the Jungle?', answers: ['lion'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the largest ocean on Earth?', answers: ['pacific ocean', 'pacific'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the hardest natural substance?', answers: ['diamond'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: Who painted the Mona Lisa?', answers: ['leonardo da vinci', 'da vinci'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: Which planet has the most moons?', answers: ['saturn'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the tallest mountain in the world?', answers: ['mount everest', 'everest'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: Which metal is liquid at room temperature?', answers: ['mercury'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: What color do you get by mixing blue and yellow?', answers: ['green'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: Which country invented paper?', answers: ['china'], source: 'preset' },
+    { prompt: '🧩 Riddle time! What has hands but can’t clap?', answers: ['clock'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: How many sides does a hexagon have?', answers: ['6', 'six'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: Which element has the chemical symbol “O”?', answers: ['oxygen'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: What do bees make?', answers: ['honey'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the largest mammal on Earth?', answers: ['blue whale', 'whale'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: Which continent is the Sahara Desert on?', answers: ['africa'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: In what sport would you perform a slam dunk?', answers: ['basketball'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the smallest prime number?', answers: ['2', 'two'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the chemical formula for water?', answers: ['h2o'], source: 'preset' },
+    { prompt: '🧠 Trivia! First to answer wins 400 pts: Who wrote "Romeo and Juliet"?', answers: ['william shakespeare', 'shakespeare'], source: 'preset' },
+];
 class TwitchBot {
     constructor(config) {
         this.responseCooldown = new Map();
@@ -41,8 +68,16 @@ class TwitchBot {
         this.ACTIVE_CHATTER_WINDOW = 5 * 60 * 1000;
         this.AUTO_RESPONSE_COOLDOWN = 2 * 60 * 1000;
         this.lastAutoResponse = 0;
-        this.botKeywords = [];
+        this.botKeywords = new Set();
+        this.emotePool = [...DEFAULT_EMOTE_NAMES];
         this.emoteNames = new Set(DEFAULT_EMOTE_NAMES.map((name) => name.toLowerCase()));
+        this.copypastaTracker = new Map();
+        this.copypastaVault = [];
+        this.MAX_COPYPasta = 25;
+        this.lastEmoteBurst = 0;
+        this.randomTriviaEnabled = true;
+        this.nextTriviaTime = Date.now() + 5 * 60 * 1000;
+        this.recentTriviaPrompts = [];
         this.channel = config.channel.toLowerCase().replace('#', '');
         this.channelName = config.channel.toLowerCase().replace('#', '');
         this.broadcasterOAuthToken = config.broadcasterOAuthToken;
@@ -65,7 +100,9 @@ class TwitchBot {
                 : undefined,
         });
         this.adHandler = new adHandler_1.AdHandler();
-        this.chatHandler = new chatHandler_1.ChatHandler(config.openaiApiKey, this.db, this.sevenTV, this.channel, this.botKeywords, config.groqApiKey, config.huggingfaceApiKey);
+        this.chatHandler = new chatHandler_1.ChatHandler(config.openaiApiKey, this.db, this.sevenTV, this.channel, Array.from(this.botKeywords), config.groqApiKey, config.huggingfaceApiKey);
+        this.chatHandler.setCopypastaProvider(() => this.getRandomCopypasta());
+        this.triviaGenerator = new triviaGenerator_1.TriviaGenerator(config.openaiApiKey, config.groqApiKey);
         this.channelPointsHandler = new channelPoints_1.ChannelPointsHandler(this.db);
         this.commandHandler = new commands_1.CommandHandler(this.db, this.games, this.actions, this.sevenTV, this.channel, this.adHandler);
         this.actions.setTimeoutCallback((target, duration, message) => {
@@ -119,6 +156,11 @@ class TwitchBot {
                 }));
             }
             this.activeChatters.set(displayName.toLowerCase(), Date.now());
+            this.trackCopypasta(message);
+            await this.maybeTriggerTrivia();
+            if (this.handleTriviaAnswer(displayName, message)) {
+                return;
+            }
             const hasRedeemed = lowerMessage.includes('redeemed');
             const hasDeposit = upperMessage.includes('DEPOSIT:');
             if (hasRedeemed && hasDeposit) {
@@ -145,10 +187,11 @@ class TwitchBot {
                     return;
                 }
             }
+            const isMod = tags.mod || false;
+            const isBroadcaster = tags.badges?.broadcaster === '1' || username.toLowerCase() === this.channelName.toLowerCase();
+            const messageEmotes = this.extractEmotes(message);
             if (message.startsWith('!')) {
                 const [command, ...args] = message.slice(1).split(' ');
-                const isMod = tags.mod || false;
-                const isBroadcaster = tags.badges?.broadcaster === '1' || username.toLowerCase() === this.channelName.toLowerCase();
                 const hasModPermissions = isMod || isBroadcaster;
                 const modOnlyCommands = ['givepts', 'givepoints', 'give', 'manualdeposit', 'mdeposit'];
                 const broadcasterOnlyCommands = ['deposit', 'redeem', 'ecoreset', 'reseteco'];
@@ -160,6 +203,13 @@ class TwitchBot {
                     this.say(`@${displayName} Only the streamer can use !${command.toLowerCase()} (automatic deposits handle viewers).`);
                     return;
                 }
+                if (command.toLowerCase() === 'trivia') {
+                    const triviaResponse = await this.handleTriviaCommand(displayName, args, isBroadcaster, hasModPermissions);
+                    if (triviaResponse) {
+                        this.say(triviaResponse);
+                    }
+                    return;
+                }
                 const response = await this.commandHandler.handleCommand(displayName, command, args, {
                     isBroadcaster,
                     isMod,
@@ -168,6 +218,9 @@ class TwitchBot {
                     await this.sendResponseLines(response);
                     return;
                 }
+            }
+            if (this.maybeRespondToEmoteMention(displayName, message, messageEmotes, isBroadcaster)) {
+                return;
             }
             const intent = this.chatHandler.getResponseIntent(message);
             this.learnAliasFromMessage(message, intent);
@@ -180,6 +233,8 @@ class TwitchBot {
                             message,
                             channel: this.channel,
                             timestamp: new Date(),
+                            isBroadcaster,
+                            isMod,
                         };
                         const response = await this.chatHandler.generateResponse(context);
                         if (response) {
@@ -189,6 +244,7 @@ class TwitchBot {
                     }
                 }
             }
+            this.maybeSendRandomEmoteBurst();
         });
         this.client.on('raw_message', (messageCloned) => {
             if (messageCloned.message &&
@@ -268,7 +324,7 @@ class TwitchBot {
         for (let len = 3; len <= Math.min(lower.length, 6); len++) {
             keywords.add(lower.slice(0, len));
         }
-        return Array.from(keywords);
+        return keywords;
     }
     handleChannelPointsRedemption(username, redemptionTitle, rewardCost) {
         const result = this.channelPointsHandler.handleRedemption(username, redemptionTitle, rewardCost);
@@ -311,12 +367,17 @@ class TwitchBot {
         }
     }
     registerEmoteNames(names) {
+        const sanitized = [];
         names.forEach((name) => {
             const normalized = name?.trim().toLowerCase();
             if (normalized) {
                 this.emoteNames.add(normalized);
+                sanitized.push(name);
             }
         });
+        if (sanitized.length) {
+            this.emotePool = sanitized;
+        }
     }
     sanitizeEmoteLine(line) {
         if (!line || this.emoteNames.size === 0) {
@@ -355,7 +416,275 @@ class TwitchBot {
                 candidates.add(cleaned);
             }
         }
-        candidates.forEach((alias) => this.chatHandler.learnAlias(alias));
+        candidates.forEach((alias) => {
+            const normalized = alias.toLowerCase();
+            if (!this.botKeywords.has(normalized)) {
+                this.botKeywords.add(normalized);
+                this.botKeywords.add(`@${normalized}`);
+            }
+            this.chatHandler.learnAlias(alias);
+        });
+    }
+    extractEmotes(message) {
+        const parts = message
+            .split(/\s+/)
+            .map((token) => token.replace(/^[^A-Za-z0-9_:]+|[^A-Za-z0-9_:]+$/g, ''))
+            .filter(Boolean);
+        return parts.filter((token) => this.isKnownEmote(token));
+    }
+    isBotMentioned(message) {
+        const lower = message.toLowerCase();
+        for (const keyword of this.botKeywords) {
+            if (keyword && lower.includes(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    maybeRespondToEmoteMention(username, originalMessage, emotes, isBroadcaster) {
+        if (!this.isBotMentioned(originalMessage)) {
+            return false;
+        }
+        const lower = originalMessage.toLowerCase();
+        const wantsEmote = lower.includes('emote') || lower.includes('favorite') || lower.includes('fave');
+        if (emotes.length === 0 && !wantsEmote) {
+            return false;
+        }
+        const main = emotes[0] || this.emotePool[Math.floor(Math.random() * Math.max(this.emotePool.length, 1))] || 'Kappa';
+        const options = isBroadcaster
+            ? [
+                `@${username} ${main} ${main} streamer privilege unlocked.`,
+                `@${username} ${main} on command? say less.`,
+                `@${username} dropping ${main} like you own the place (you kinda do).`,
+            ]
+            : [
+                `@${username} ${main} ${main} we see you.`,
+                `@${username} matching the ${main} vibe.`,
+                `@${username} approved, keep spamming ${main}.`,
+                `@${username} ${main} supremacy.`,
+            ];
+        const line = options[Math.floor(Math.random() * options.length)];
+        this.say(this.sanitizeEmoteLine(line));
+        return true;
+    }
+    buildEmoteBurstLines() {
+        if (this.emotePool.length === 0) {
+            return ['Kappa Kappa', 'PogChamp PogChamp'];
+        }
+        const lines = [];
+        const totalLines = Math.floor(Math.random() * 4) + 3; // 3-6 lines
+        for (let i = 0; i < totalLines; i++) {
+            const perLine = Math.floor(Math.random() * 5) + 5; // 5-9 emotes
+            const emotes = [];
+            for (let j = 0; j < perLine; j++) {
+                const pick = this.emotePool[Math.floor(Math.random() * this.emotePool.length)];
+                emotes.push(pick);
+            }
+            lines.push(emotes.join(' '));
+        }
+        return lines;
+    }
+    maybeSendRandomEmoteBurst() {
+        if (Date.now() - this.lastEmoteBurst < 3 * 60 * 1000) {
+            return;
+        }
+        if (this.getActiveChatters().length < 5) {
+            return;
+        }
+        if (Math.random() > 0.01) {
+            return;
+        }
+        const lines = this.buildEmoteBurstLines();
+        this.lastEmoteBurst = Date.now();
+        this.sendResponseLines(lines.join('\n'), true).catch(() => null);
+    }
+    shouldTrackCopypasta(message) {
+        const lower = message.toLowerCase();
+        if (message.startsWith('!'))
+            return false;
+        if (lower.includes('redeemed') || lower.includes('deposit'))
+            return false;
+        if (lower.startsWith('http'))
+            return false;
+        const words = message.split(/\s+/).length;
+        return message.length >= 60 || words >= 12 || message.includes('\n');
+    }
+    trackCopypasta(message) {
+        const trimmed = message.trim();
+        if (!this.shouldTrackCopypasta(trimmed)) {
+            return;
+        }
+        const key = trimmed.toLowerCase();
+        const entry = this.copypastaTracker.get(key) ?? { count: 0, lastSeen: 0 };
+        entry.count += 1;
+        entry.lastSeen = Date.now();
+        this.copypastaTracker.set(key, entry);
+        if (entry.count >= 3) {
+            this.addCopypastaToVault(trimmed);
+        }
+    }
+    addCopypastaToVault(text) {
+        if (this.copypastaVault.includes(text)) {
+            return;
+        }
+        this.copypastaVault.push(text);
+        if (this.copypastaVault.length > this.MAX_COPYPasta) {
+            this.copypastaVault.shift();
+        }
+    }
+    getRandomCopypasta() {
+        if (this.copypastaVault.length === 0) {
+            return null;
+        }
+        return this.copypastaVault[Math.floor(Math.random() * this.copypastaVault.length)];
+    }
+    async maybeTriggerTrivia() {
+        if (!this.randomTriviaEnabled) {
+            return;
+        }
+        if (this.activeTrivia || Date.now() < this.nextTriviaTime) {
+            return;
+        }
+        if (this.getActiveChatters().length < 5) {
+            return;
+        }
+        await this.startTrivia();
+    }
+    async startTrivia(manual = false) {
+        if (this.activeTrivia) {
+            if (manual) {
+                this.say('⚠️ A trivia question is already active! Answer that one first.');
+            }
+            return false;
+        }
+        const question = await this.generateTriviaQuestion();
+        if (!question) {
+            if (manual) {
+                this.say('⚠️ Trivia generator is tired, try again in a bit.');
+            }
+            this.scheduleNextTrivia();
+            return false;
+        }
+        this.activeTrivia = {
+            question,
+            expiresAt: Date.now() + 60 * 1000,
+        };
+        const prefix = question.source === 'ai' ? '🤖 ' : '📚 ';
+        const prompt = manual
+            ? `${prefix}${question.prompt} (mod triggered)`
+            : `${prefix}${question.prompt}`;
+        console.log(`[Trivia] Serving ${question.source ?? 'preset'} question: ${question.prompt}`);
+        this.say(prompt);
+        this.recentTriviaPrompts.push(question.prompt.toLowerCase());
+        if (this.recentTriviaPrompts.length > 10) {
+            this.recentTriviaPrompts.shift();
+        }
+        return true;
+    }
+    handleTriviaAnswer(username, message) {
+        if (!this.activeTrivia) {
+            return false;
+        }
+        if (Date.now() > this.activeTrivia.expiresAt) {
+            this.say('⏱️ Trivia time is up! Nobody snagged the points.');
+            this.activeTrivia = undefined;
+            this.scheduleNextTrivia();
+            return false;
+        }
+        const normalized = message.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+        if (!normalized) {
+            return false;
+        }
+        const isCorrect = this.activeTrivia.question.answers.some((ans) => normalized === ans || normalized.includes(ans));
+        if (!isCorrect) {
+            return false;
+        }
+        const reward = 400;
+        this.db.addWin(username, reward, 'Trivia bonus');
+        this.say(`🎉 @${username} got it right and wins ${reward.toLocaleString()} points!`);
+        this.activeTrivia = undefined;
+        this.scheduleNextTrivia();
+        return true;
+    }
+    scheduleNextTrivia() {
+        if (!this.randomTriviaEnabled) {
+            this.nextTriviaTime = Number.MAX_SAFE_INTEGER;
+            return;
+        }
+        this.nextTriviaTime = Date.now() + this.randomTriviaInterval();
+    }
+    randomTriviaInterval() {
+        const min = 10 * 60 * 1000;
+        const max = 20 * 60 * 1000;
+        return min + Math.random() * (max - min);
+    }
+    isRecentTriviaDuplicate(prompt) {
+        const normalized = prompt.toLowerCase().trim();
+        return this.recentTriviaPrompts.some((existing) => existing === normalized);
+    }
+    async generateTriviaQuestion() {
+        try {
+            if (this.triviaGenerator) {
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    const aiQuestion = await this.triviaGenerator.generateTrivia(this.recentTriviaPrompts.slice(-10));
+                    if (!aiQuestion) {
+                        continue;
+                    }
+                    if (this.isRecentTriviaDuplicate(aiQuestion.prompt)) {
+                        console.warn('[Trivia] AI generated duplicate question, retrying...');
+                        continue;
+                    }
+                    console.log('[Trivia] AI generated new question.');
+                    return aiQuestion;
+                }
+                console.warn('[Trivia] AI generator returned duplicates/empty payload; falling back to presets.');
+            }
+            else {
+                console.warn('[Trivia] No AI trivia generator configured; using presets.');
+            }
+        }
+        catch (error) {
+            console.warn('⚠️ Failed to generate AI trivia question:', error);
+        }
+        const fallback = TRIVIA_QUESTIONS[Math.floor(Math.random() * TRIVIA_QUESTIONS.length)];
+        return fallback.source ? fallback : { ...fallback, source: 'preset' };
+    }
+    async handleTriviaCommand(username, args, isBroadcaster, hasModPermissions) {
+        if (!hasModPermissions) {
+            return `@${username} Only mods or the streamer can use !trivia.`;
+        }
+        const cleanArgs = args.filter((arg) => arg && arg.trim().length > 0);
+        const subcommand = cleanArgs[0]?.toLowerCase() || 'start';
+        if (subcommand === 'start') {
+            const started = await this.startTrivia(true);
+            return started
+                ? `@${username} Trivia started! First correct answer wins 400 points.`
+                : `@${username} There's already an active trivia question.`;
+        }
+        if (subcommand === 'enable') {
+            if (this.randomTriviaEnabled) {
+                return `@${username} Random trivia is already enabled.`;
+            }
+            this.setRandomTriviaEnabled(true);
+            return `@${username} Random trivia events enabled.`;
+        }
+        if (subcommand === 'disable') {
+            if (!this.randomTriviaEnabled) {
+                return `@${username} Random trivia is already disabled.`;
+            }
+            this.setRandomTriviaEnabled(false);
+            return `@${username} Random trivia events disabled. Manual !trivia start still works.`;
+        }
+        if (subcommand === 'status') {
+            const status = this.randomTriviaEnabled ? 'enabled' : 'disabled';
+            const active = this.activeTrivia ? 'A question is currently active.' : 'No active question.';
+            return `@${username} Random trivia is ${status}. ${active}`;
+        }
+        return `@${username} Usage: !trivia [start|enable|disable|status]`;
+    }
+    setRandomTriviaEnabled(enabled) {
+        this.randomTriviaEnabled = enabled;
+        this.scheduleNextTrivia();
     }
     timeoutUser(target, duration, message) {
         this.client

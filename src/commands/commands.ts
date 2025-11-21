@@ -576,8 +576,8 @@ export class CommandHandler {
       const parsed = this.parsePipeArgs(args);
       if (!parsed) {
         const usage = actionId === 'poll'
-          ? `@${username} Usage: !buy poll Question? | Option 1 | Option 2 [| duration=120]`
-          : `@${username} Usage: !buy prediction Title? | Outcome 1 | Outcome 2 [| duration=120]`;
+          ? `@${username} Usage: !buy poll Question? | Option 1 | Option 2 [| duration=120] — example: !buy poll Best snack? | Pizza | Wings | duration=90`
+          : `@${username} Usage: !buy prediction Title? | Outcome 1 | Outcome 2 [| duration=120] — example: !buy prediction Will boss win? | Yes | No | duration=120`;
         return usage;
       }
       params = parsed;

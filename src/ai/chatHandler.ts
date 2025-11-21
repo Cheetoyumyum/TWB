@@ -8,6 +8,8 @@ export interface ChatContext {
   message: string;
   channel: string;
   timestamp: Date;
+  isBroadcaster?: boolean;
+  isMod?: boolean;
 }
 
 type AIProvider = 'openai' | 'groq' | 'huggingface' | 'none';
@@ -103,6 +105,7 @@ CRITICAL RULES:
 - NEVER roleplay as anything other than a Twitch viewer.
 - You're witty, feral-in-a-cute-way, and roast chatters affectionately when they deserve it.
 - Adopt ANY nickname chat gives you (Sun, PoopBot, whatever) like it's canon lore.
+- RESPECT the streamer (${context.channel}) — be playful but never toxic toward them; hype them up if they talk to you.
 - Keep responses SHORT (1 sentence, max 2). Twitch chat moves fast.
 - Be funny, use Twitch slang, reference memes, react to ongoing stream chaos.
 - Use emotes naturally (but don't spam them) and never glue punctuation directly to the emote.
@@ -142,7 +145,6 @@ User ${context.username} said: "${context.message}"`;
         if (!botResponse.toLowerCase().includes(`@${context.username.toLowerCase()}`)) {
           botResponse = `@${context.username} ${botResponse}`;
         }
-        // Optionally enhance response with 7TV emotes (random chance)
         if (Math.random() < 0.3) {
           const randomEmote = await this.sevenTV.getRandomEmote(this.channel);
           if (randomEmote) {
@@ -150,20 +152,26 @@ User ${context.username} said: "${context.message}"`;
           }
         }
 
-        // Save to context memory
         conversationHistory.push({
           role: 'assistant',
           content: botResponse,
         });
 
-        // Save to database
         this.db.saveChatContext(context.username, context.message, botResponse);
+      } else {
+        botResponse = await this.getFallbackResponse(context);
+      }
+
+      const copypasta = this.maybeUseCopypasta(context);
+      if (copypasta) {
+        return copypasta;
       }
 
       return botResponse;
     } catch (error) {
       console.error('Error generating AI response:', error);
-      return await this.getFallbackResponse(context);
+      const fallback = await this.getFallbackResponse(context);
+      return this.maybeUseCopypasta(context) ?? fallback;
     }
   }
 
@@ -181,12 +189,18 @@ User ${context.username} said: "${context.message}"`;
     let responses: string[] = [];
     
     if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
-      responses = [
+      responses = context.isBroadcaster
+        ? [
+            `yo ${context.username}, bossman energy`,
+            `hey ${context.username}! stream lookin' crispy`,
+            `ayy ${context.username} checkin' in`,
+          ]
+        : [
         `yo ${context.username} you rang?`,
         `hey ${context.username}, took you long enough`,
         `ayy ${context.username} made it out of lurk hell`,
         `sup ${context.username}, wipe your feet first`,
-      ];
+          ];
     } else if (lowerMessage.includes('pog') || lowerMessage.includes('poggers')) {
       responses = [
         `${context.username} actually cooking PogU`,
@@ -207,6 +221,14 @@ User ${context.username} said: "${context.message}"`;
         `${context.username} bruh I'm just here for pixels`,
       ];
     } else {
+      if (context.isBroadcaster) {
+        responses = [
+          `boss ${context.username} vibing, we see you`,
+          `${context.username} checking the vibes? all good`,
+          `yo ${context.username} keep the scuff coming`,
+          `${context.username} hosting AND chatting, cracked`,
+        ];
+      } else {
       responses = [
         `yo ${context.username} still molding or nah`,
         `${context.username} out here farming attention`,
@@ -215,6 +237,7 @@ User ${context.username} said: "${context.message}"`;
         `${context.username} vibing… question mark`,
         `${context.username} acting brand new again`,
       ];
+      }
     }
     
     let response = responses[Math.floor(Math.random() * responses.length)];
@@ -231,15 +254,36 @@ User ${context.username} said: "${context.message}"`;
   }
 
   private getSnarkyResponse(context: ChatContext): string {
-    const responses = [
-      `bruh ${context.username} did you bump your head?`,
-      `${context.username} that's a wild request, take a lap`,
-      `KEKW ${context.username} absolutely not`,
-      `${context.username} relax, this ain't tech support`,
-      `nah ${context.username} we flaming you for that one`,
-      `${context.username} you good? blink twice`,
-    ];
+    const responses = context.isBroadcaster
+      ? [
+          `lol ${context.username} you're the main character chill`,
+          `${context.username} pls don't ban me I'm just the bot`,
+          `ook ${context.username} noted, you're in charge`,
+          `${context.username} I said what I said but ily boss`,
+        ]
+      : [
+          `bruh ${context.username} did you bump your head?`,
+          `${context.username} that's a wild request, take a lap`,
+          `KEKW ${context.username} absolutely not`,
+          `${context.username} relax, this ain't tech support`,
+          `nah ${context.username} we flaming you for that one`,
+          `${context.username} you good? blink twice`,
+        ];
     return responses[Math.floor(Math.random() * responses.length)];
+  }
+
+  private maybeUseCopypasta(context: ChatContext): string | null {
+    if (!this.copypastaProvider || context.isBroadcaster) {
+      return null;
+    }
+    if (Math.random() > 0.05) {
+      return null;
+    }
+    const pasta = this.copypastaProvider();
+    if (!pasta) {
+      return null;
+    }
+    return `@${context.username} ${pasta}`;
   }
 
   /**

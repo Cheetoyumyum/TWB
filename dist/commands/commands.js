@@ -451,8 +451,8 @@ class CommandHandler {
             const parsed = this.parsePipeArgs(args);
             if (!parsed) {
                 const usage = actionId === 'poll'
-                    ? `@${username} Usage: !buy poll Question? | Option 1 | Option 2 [| duration=120]`
-                    : `@${username} Usage: !buy prediction Title? | Outcome 1 | Outcome 2 [| duration=120]`;
+                    ? `@${username} Usage: !buy poll Question? | Option 1 | Option 2 [| duration=120] — example: !buy poll Best snack? | Pizza | Wings | duration=90`
+                    : `@${username} Usage: !buy prediction Title? | Outcome 1 | Outcome 2 [| duration=120] — example: !buy prediction Will boss win? | Yes | No | duration=120`;
                 return usage;
             }
             params = parsed;
@@ -803,7 +803,7 @@ class CommandHandler {
         this.db.addWin(targetUser, amount, `Gifted by ${username}`);
         const newBalance = this.db.getUserBalance(targetUser)?.balance || 0;
         const feeText = fee > 0 ? ` (cost you ${fee.toLocaleString()} pts fee)` : '';
-        return `@${username} ✅ Gave ${amount.toLocaleString()} points to @${targetUser}${feeText}. Their new balance: ${newBalance.toLocaleString()} pts`;
+        return `@${username} ✅ Gave ${amount.toLocaleString()} points to @${targetUser}${feeText} — their new balance: ${newBalance.toLocaleString()} pts`;
     }
     getActionUsageHint(actionId) {
         switch (actionId) {
