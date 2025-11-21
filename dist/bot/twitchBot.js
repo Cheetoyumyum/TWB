@@ -13,32 +13,67 @@ const games_1 = require("../games/games");
 const actions_1 = require("../actions/actions");
 const sevenTV_1 = require("../emotes/sevenTV");
 const adHandler_1 = require("../ads/adHandler");
+const twitchApi_1 = require("../twitch/twitchApi");
+const DEFAULT_EMOTE_NAMES = [
+    'Kappa',
+    'PogChamp',
+    'PogU',
+    'KEKW',
+    'OMEGALUL',
+    'LUL',
+    'FeelsStrongMan',
+    'FeelsBadMan',
+    'FeelsGoodMan',
+    'PepeHands',
+    'PepeLaugh',
+    'BibleThump',
+    'NotLikeThis',
+    'ResidentSleeper',
+    '4Head',
+    'HeyGuys',
+    'Kreygasm',
+];
 class TwitchBot {
     constructor(config) {
         this.responseCooldown = new Map();
-        this.activeChatters = new Map(); // username -> last chat timestamp
-        this.COOLDOWN_MS = 3000; // 3 seconds between responses per user
-        this.ACTIVE_CHATTER_WINDOW = 5 * 60 * 1000; // 5 minutes
+        this.activeChatters = new Map();
+        this.COOLDOWN_MS = 3000;
+        this.ACTIVE_CHATTER_WINDOW = 5 * 60 * 1000;
+        this.AUTO_RESPONSE_COOLDOWN = 2 * 60 * 1000;
+        this.lastAutoResponse = 0;
+        this.botKeywords = [];
+        this.emoteNames = new Set(DEFAULT_EMOTE_NAMES.map((name) => name.toLowerCase()));
         this.channel = config.channel.toLowerCase().replace('#', '');
         this.channelName = config.channel.toLowerCase().replace('#', '');
-        // Initialize database
+        this.broadcasterOAuthToken = config.broadcasterOAuthToken;
+        this.botKeywords = this.buildBotKeywords(config.username);
         this.db = new database_1.BotDatabase(config.dbPath);
-        // Initialize modules
-        this.games = new games_1.GamesModule(this.db);
-        this.actions = new actions_1.ActionsModule(this.db);
         this.sevenTV = new sevenTV_1.SevenTVService(config.seventvUserId);
+        this.games = new games_1.GamesModule(this.db);
+        if (config.clientId && config.broadcasterId && (config.broadcasterOAuthToken || config.oauthToken)) {
+            this.twitchApi = new twitchApi_1.TwitchApiClient(config.clientId, config.broadcasterId, config.broadcasterOAuthToken || config.oauthToken);
+        }
+        this.actions = new actions_1.ActionsModule(this.db, this.sevenTV, this.channel, {
+            createPoll: this.twitchApi
+                ? (question, options, duration) => this.twitchApi.createPoll(question, options, duration)
+                : undefined,
+            createPrediction: this.twitchApi
+                ? (title, outcomes, duration) => this.twitchApi.createPrediction(title, outcomes, duration)
+                : undefined,
+            sendShoutout: this.twitchApi
+                ? (target) => this.twitchApi.sendShoutout(target)
+                : undefined,
+        });
         this.adHandler = new adHandler_1.AdHandler();
-        this.chatHandler = new chatHandler_1.ChatHandler(config.openaiApiKey, this.db, this.sevenTV, this.channel, config.groqApiKey, config.huggingfaceApiKey);
+        this.chatHandler = new chatHandler_1.ChatHandler(config.openaiApiKey, this.db, this.sevenTV, this.channel, this.botKeywords, config.groqApiKey, config.huggingfaceApiKey);
         this.channelPointsHandler = new channelPoints_1.ChannelPointsHandler(this.db);
         this.commandHandler = new commands_1.CommandHandler(this.db, this.games, this.actions, this.sevenTV, this.channel, this.adHandler);
-        // Set up callbacks
         this.actions.setTimeoutCallback((target, duration, message) => {
             this.timeoutUser(target, duration, message);
         });
         this.commandHandler.setActiveChattersCallback(() => {
             return this.getActiveChatters();
         });
-        // Set up ad callbacks
         this.adHandler.setAdStartCallback((duration) => {
             const messages = this.adHandler.getAdMessages(duration);
             this.say(messages.start);
@@ -47,9 +82,7 @@ class TwitchBot {
             const messages = this.adHandler.getAdMessages(0);
             this.say(messages.end);
         });
-        // Preload channel emotes
         this.loadChannelEmotes();
-        // Initialize Twitch client
         this.client = new tmi_js_1.default.Client({
             options: { debug: false },
             connection: {
@@ -58,57 +91,48 @@ class TwitchBot {
             },
             identity: {
                 username: config.username,
-                password: config.oauthToken.startsWith('oauth:') ? config.oauthToken : `oauth:${config.oauthToken}`,
+                password: config.oauthToken.startsWith('oauth:')
+                    ? config.oauthToken
+                    : `oauth:${config.oauthToken}`,
             },
             channels: [this.channel],
         });
         this.setupEventHandlers();
     }
     setupEventHandlers() {
-        // Listen to ALL messages including system messages
         this.client.on('message', async (channel, tags, message, self) => {
             if (self)
-                return; // Ignore bot's own messages
+                return;
             const username = tags.username || 'unknown';
             const displayName = tags['display-name'] || username;
-            // Log ALL messages that contain "redeemed" or "DEPOSIT" for debugging
             const lowerMessage = message.toLowerCase();
             const upperMessage = message.toUpperCase();
             if (lowerMessage.includes('redeemed') || upperMessage.includes('DEPOSIT:')) {
                 console.log(`🔍 [DEBUG] Message received: "${message}"`);
                 console.log(`   From: ${displayName} (${username})`);
-                console.log(`   Tags:`, JSON.stringify({
+                console.log('   Tags:', JSON.stringify({
                     mod: tags.mod,
                     subscriber: tags.subscriber,
                     badges: tags.badges,
                     'message-type': tags['message-type'],
-                    'user-type': tags['user-type']
+                    'user-type': tags['user-type'],
                 }));
             }
-            // Track active chatters (for rain command)
             this.activeChatters.set(displayName.toLowerCase(), Date.now());
-            // Check for channel point redemption messages in chat (fallback detection)
-            // Twitch shows redemption messages like "Username redeemed DEPOSIT: 10000"
-            // This is a fallback - webhooks are the proper way, but this catches chat messages
-            // Very flexible pattern matching - check if message contains both "redeemed" and "DEPOSIT:"
             const hasRedeemed = lowerMessage.includes('redeemed');
             const hasDeposit = upperMessage.includes('DEPOSIT:');
             if (hasRedeemed && hasDeposit) {
-                // Extract the deposit amount from anywhere in the message
                 const depositMatch = message.match(/DEPOSIT:\s*(\d+)/i);
                 if (depositMatch) {
-                    const depositAmount = parseInt(depositMatch[1]);
+                    const depositAmount = parseInt(depositMatch[1], 10);
                     const rewardTitle = `DEPOSIT: ${depositAmount}`;
-                    // Try to extract username - could be at start of message or anywhere
-                    let redeemerName = displayName; // Default to message sender
-                    // Pattern 1: "Username redeemed DEPOSIT: X" at start
+                    let redeemerName = displayName;
                     const startPattern = /^(\w+)\s+redeemed/i;
                     const startMatch = message.match(startPattern);
                     if (startMatch) {
                         redeemerName = startMatch[1];
                     }
                     else {
-                        // Pattern 2: "Username redeemed" anywhere
                         const anywherePattern = /(\w+)\s+redeemed/i;
                         const anywhereMatch = message.match(anywherePattern);
                         if (anywhereMatch) {
@@ -118,57 +142,64 @@ class TwitchBot {
                     console.log(`💡 Auto-detected redemption in chat: ${redeemerName} redeemed ${rewardTitle}`);
                     console.log(`   Full message: "${message}"`);
                     this.handleChannelPointsRedemption(redeemerName, rewardTitle, depositAmount);
-                    return; // Don't process as regular command
+                    return;
                 }
             }
-            // Handle commands
             if (message.startsWith('!')) {
                 const [command, ...args] = message.slice(1).split(' ');
-                // Check for mod-only commands
                 const isMod = tags.mod || false;
                 const isBroadcaster = tags.badges?.broadcaster === '1' || username.toLowerCase() === this.channelName.toLowerCase();
                 const hasModPermissions = isMod || isBroadcaster;
-                // Restrict certain commands to mods/streamer
                 const modOnlyCommands = ['givepts', 'givepoints', 'give', 'manualdeposit', 'mdeposit'];
+                const broadcasterOnlyCommands = ['deposit', 'redeem', 'ecoreset', 'reseteco'];
                 if (modOnlyCommands.includes(command.toLowerCase()) && !hasModPermissions) {
                     this.say(`@${displayName} That command is only available to moderators and the streamer.`);
                     return;
                 }
-                const response = await this.commandHandler.handleCommand(displayName, command, args);
+                if (broadcasterOnlyCommands.includes(command.toLowerCase()) && !isBroadcaster) {
+                    this.say(`@${displayName} Only the streamer can use !${command.toLowerCase()} (automatic deposits handle viewers).`);
+                    return;
+                }
+                const response = await this.commandHandler.handleCommand(displayName, command, args, {
+                    isBroadcaster,
+                    isMod,
+                });
                 if (response) {
-                    this.say(response);
+                    await this.sendResponseLines(response);
                     return;
                 }
             }
-            // Handle AI chat responses
-            if (this.chatHandler.shouldRespond(message)) {
-                if (this.canRespond(username)) {
-                    const context = {
-                        username: displayName,
-                        message: message,
-                        channel: this.channel,
-                        timestamp: new Date(),
-                    };
-                    const response = await this.chatHandler.generateResponse(context);
-                    if (response) {
-                        this.say(response);
-                        this.updateCooldown(username);
+            const intent = this.chatHandler.getResponseIntent(message);
+            this.learnAliasFromMessage(message, intent);
+            if (intent !== 'none') {
+                const isRandom = intent === 'random';
+                if (!isRandom || this.canAutoRespond()) {
+                    if (this.canRespond(username)) {
+                        const context = {
+                            username: displayName,
+                            message,
+                            channel: this.channel,
+                            timestamp: new Date(),
+                        };
+                        const response = await this.chatHandler.generateResponse(context);
+                        if (response) {
+                            await this.sendResponseLines(response, isRandom);
+                            this.updateCooldown(username);
+                        }
                     }
                 }
             }
         });
-        // Listen for all raw messages (for debugging)
         this.client.on('raw_message', (messageCloned) => {
-            // Log redemption-related raw messages
-            if (messageCloned.message && (messageCloned.message.toLowerCase().includes('redeemed') ||
-                messageCloned.message.toUpperCase().includes('DEPOSIT:'))) {
+            if (messageCloned.message &&
+                (messageCloned.message.toLowerCase().includes('redeemed') ||
+                    messageCloned.message.toUpperCase().includes('DEPOSIT:'))) {
                 console.log(`🔍 [RAW] Command: ${messageCloned.command}, Message: "${messageCloned.message}"`);
             }
         });
         this.client.on('connected', async (addr, port) => {
             console.log(`✅ Connected to Twitch at ${addr}:${port}`);
             console.log(`📺 Joined channel: #${this.channel}`);
-            // Load emotes after connection
             await this.loadChannelEmotes();
         });
         this.client.on('disconnected', (reason) => {
@@ -205,63 +236,197 @@ class TwitchBot {
             console.error('Error sending message:', err);
         });
     }
-    // Handle channel points redemption (called from webhook)
+    async sendResponseLines(text, isAuto = false) {
+        const parts = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+        if (parts.length === 0) {
+            return;
+        }
+        for (const line of parts) {
+            const cleanedLine = this.sanitizeEmoteLine(line);
+            this.say(cleanedLine);
+            if (parts.length > 1) {
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+        }
+        if (isAuto) {
+            this.lastAutoResponse = Date.now();
+        }
+    }
+    canAutoRespond() {
+        return Date.now() - this.lastAutoResponse >= this.AUTO_RESPONSE_COOLDOWN;
+    }
+    buildBotKeywords(username) {
+        const lower = username.toLowerCase();
+        const keywords = new Set([
+            lower,
+            `@${lower}`,
+            'bot',
+            'hey bot',
+            'hi bot',
+            'hello bot',
+        ]);
+        for (let len = 3; len <= Math.min(lower.length, 6); len++) {
+            keywords.add(lower.slice(0, len));
+        }
+        return Array.from(keywords);
+    }
     handleChannelPointsRedemption(username, redemptionTitle, rewardCost) {
         const result = this.channelPointsHandler.handleRedemption(username, redemptionTitle, rewardCost);
         if (result.success && result.message) {
             this.say(result.message);
         }
     }
-    // Get database instance for external access if needed
     getDatabase() {
         return this.db;
     }
-    // Get 7TV service instance
     getSevenTV() {
         return this.sevenTV;
     }
-    // Get channel name
     getChannel() {
         return this.channel;
     }
-    // Get active chatters (last 5 minutes)
     getActiveChatters() {
         const now = Date.now();
         const active = [];
-        for (const [username, timestamp] of this.activeChatters.entries()) {
+        for (const [name, timestamp] of this.activeChatters.entries()) {
             if (now - timestamp < this.ACTIVE_CHATTER_WINDOW) {
-                active.push(username);
+                active.push(name);
             }
         }
-        // Clean up old entries
-        for (const [username, timestamp] of this.activeChatters.entries()) {
+        for (const [name, timestamp] of this.activeChatters.entries()) {
             if (now - timestamp >= this.ACTIVE_CHATTER_WINDOW) {
-                this.activeChatters.delete(username);
+                this.activeChatters.delete(name);
             }
         }
         return active;
     }
-    // Load channel emotes from 7TV
     async loadChannelEmotes() {
         try {
             const emotes = await this.sevenTV.getChannelEmotes(this.channel);
             console.log(`🎭 Loaded ${emotes.length} 7TV emotes for ${this.channel}`);
+            this.registerEmoteNames(emotes.map((emote) => emote.name));
         }
         catch (error) {
-            console.warn(`⚠️  Failed to load 7TV emotes:`, error);
+            console.warn('⚠️ Failed to load 7TV emotes:', error);
         }
     }
-    // Timeout a user
+    registerEmoteNames(names) {
+        names.forEach((name) => {
+            const normalized = name?.trim().toLowerCase();
+            if (normalized) {
+                this.emoteNames.add(normalized);
+            }
+        });
+    }
+    sanitizeEmoteLine(line) {
+        if (!line || this.emoteNames.size === 0) {
+            return line;
+        }
+        return line.replace(/([A-Za-z0-9_]+)([.!?,]+)(?=\s|$)/g, (match, word, punct) => {
+            if (this.isKnownEmote(word)) {
+                return `${word} ${punct}`;
+            }
+            return match;
+        });
+    }
+    isKnownEmote(token) {
+        const normalized = token.trim().toLowerCase();
+        return this.emoteNames.has(normalized);
+    }
+    learnAliasFromMessage(message, intent) {
+        if (intent === 'none') {
+            return;
+        }
+        const candidates = new Set();
+        const leadingMatch = message.match(/^\s*([A-Za-z0-9_]{3,20})(?=[,:!?])/);
+        if (leadingMatch) {
+            candidates.add(leadingMatch[1]);
+        }
+        const words = message.split(/\s+/);
+        for (const raw of words) {
+            const cleaned = raw.replace(/[^A-Za-z0-9_]/g, '');
+            if (!cleaned)
+                continue;
+            const lower = cleaned.toLowerCase();
+            if (lower === this.channelName || this.chatHandler.hasAlias(lower)) {
+                continue;
+            }
+            if (lower.startsWith('bot') || lower.endsWith('bot')) {
+                candidates.add(cleaned);
+            }
+        }
+        candidates.forEach((alias) => this.chatHandler.learnAlias(alias));
+    }
     timeoutUser(target, duration, message) {
-        this.client.timeout(this.channel, target, duration, message)
-            .then(() => {
-            // Timeout successful, message already sent by actions module
-        })
+        this.client
+            .timeout(this.channel, target, duration, message)
             .catch((err) => {
             console.error(`Failed to timeout ${target}:`, err);
-            // Still send the snarky message even if timeout fails
             this.say(message);
         });
+    }
+    announceAdWarning(timeInSeconds) {
+        const formatted = this.formatDuration(Math.max(timeInSeconds, 10));
+        const warnings = [
+            `🚨 Heads up! Twitch will run an ad in ${formatted}. Stretch, hydrate, don't leave!`,
+            `⏰ Ad break in ${formatted}! Subscribers stay cozy, everyone else we'll see right after.`,
+            `📺 Ads arriving in ${formatted}. Perfect moment to grab a snack and be back!`,
+        ];
+        this.say(warnings[Math.floor(Math.random() * warnings.length)]);
+    }
+    announceAdStarted(duration) {
+        console.log(`📺 Detected scheduled ad for ~${duration}s`);
+        this.adHandler.startAd(duration);
+    }
+    handleNewFollower(username) {
+        const messages = [
+            `💜 Thanks for the follow, ${username}! Welcome in!`,
+            `🎉 ${username} just joined the crew! Appreciate the follow!`,
+            `🙌 ${username}, you're amazing! Thanks for hitting that follow button!`,
+        ];
+        this.say(messages[Math.floor(Math.random() * messages.length)]);
+    }
+    handleNewSubscriber(username, tier, isResub, message) {
+        const tierLabel = tier ? ` (Tier ${this.mapTier(tier)})` : '';
+        const verb = isResub ? 'resubbed' : 'subscribed';
+        const responses = [
+            `🔥 ${username} just ${verb}${tierLabel}! Thank you for the love!`,
+            `💜 Massive thanks to ${username} for the ${verb}${tierLabel}! Enjoy the emotes!`,
+            `🎁 ${username} ${verb}! Welcome to the comfy club!`,
+        ];
+        this.say(responses[Math.floor(Math.random() * responses.length)]);
+        if (message) {
+            this.say(`💬 ${username}'s sub message: "${message}"`);
+        }
+    }
+    handleGiftSubscription(gifter, recipientCount, isAnonymous) {
+        const name = isAnonymous ? 'Someone generous' : gifter;
+        const messages = [
+            `🎁 ${name} just gifted ${recipientCount} sub(s)! Thank you for sharing the love!`,
+            `💜 Huge thanks to ${name} for the ${recipientCount} gifted sub(s)!`,
+            `🔥 ${name} dropping ${recipientCount} gifts! Chat, show them some hype!`,
+        ];
+        this.say(messages[Math.floor(Math.random() * messages.length)]);
+    }
+    formatDuration(totalSeconds) {
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = Math.max(totalSeconds % 60, 0);
+        if (minutes > 0) {
+            return `${minutes}m ${seconds}s`;
+        }
+        return `${seconds}s`;
+    }
+    mapTier(tier) {
+        switch (tier) {
+            case '1000':
+                return '1';
+            case '2000':
+                return '2';
+            case '3000':
+                return '3';
+            default:
+                return tier;
+        }
     }
 }
 exports.TwitchBot = TwitchBot;

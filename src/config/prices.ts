@@ -16,15 +16,14 @@ export interface PriceConfig {
     timeout: number;
     shoutout: number;
     emote: number;
-    bonus: number;
     poll: number;
+    prediction: number;
     countdown: number;
     quote: number;
     roast: number;
     compliment: number;
     raid: number;
     challenge: number;
-    tip: number;
     streak: number;
   };
   
@@ -69,11 +68,11 @@ export const PRICES: PriceConfig = {
     emote: 800,           // Was 150 - increased for spam prevention
     
     // Bonus/reward actions - expensive to maintain economy
-    bonus: 5000,          // Was 1000 - gives 500 points, so net cost is 4500
     streak: 3000,        // Was 800 - protection is valuable
     
     // Interactive actions - moderate to high
     poll: 2000,          // Was 400 - polls can be disruptive
+    prediction: 10000,   // Twitch predictions are high engagement
     countdown: 1000,     // Was 200 - increased for spam prevention
     quote: 400,          // Was 50 - increased but still affordable
     roast: 1500,         // Was 300 - increased for value
@@ -82,7 +81,6 @@ export const PRICES: PriceConfig = {
     // Community actions - high value, high price
     raid: 3000,          // Was 600 - raids are high value
     challenge: 2000,     // Was 400 - challenges are engaging
-    tip: 1000,          // Was 200 - tips should be meaningful
   },
   
   games: {

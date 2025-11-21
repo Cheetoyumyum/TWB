@@ -36,7 +36,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv = __importStar(require("dotenv"));
 const twitchBot_1 = require("./bot/twitchBot");
 const webhook_1 = require("./webhook/webhook");
-const redemptionPoller_1 = require("./channelPoints/redemptionPoller");
+const pubsubListener_1 = require("./channelPoints/pubsubListener");
+const adMonitor_1 = require("./ads/adMonitor");
 // Load environment variables
 dotenv.config();
 async function main() {
@@ -60,15 +61,20 @@ async function main() {
             }
         }
     }
+    const clientId = process.env.TWITCH_CLIENT_ID;
+    const channelUserId = process.env.TWITCH_CHANNEL_USER_ID;
     const config = {
         username: process.env.TWITCH_BOT_USERNAME,
         oauthToken: process.env.TWITCH_OAUTH_TOKEN,
+        broadcasterOAuthToken: process.env.TWITCH_BROADCASTER_OAUTH_TOKEN,
         channel: process.env.TWITCH_CHANNEL,
         openaiApiKey: process.env.OPENAI_API_KEY,
         groqApiKey: process.env.GROQ_API_KEY,
         huggingfaceApiKey: process.env.HUGGINGFACE_API_KEY,
         dbPath: process.env.DATABASE_PATH || './data/bot.json',
         seventvUserId: seventvUserId,
+        clientId,
+        broadcasterId: channelUserId,
     };
     // Determine AI provider status
     let aiStatus = 'Disabled (using fallback)';
@@ -110,34 +116,49 @@ async function main() {
     else {
         console.log(`⚠️  No webhook secret set - signature verification disabled (less secure)`);
     }
-    // Start redemption poller as fallback (if Client ID and User ID are available)
-    const clientId = process.env.TWITCH_CLIENT_ID;
-    const channelUserId = process.env.TWITCH_CHANNEL_USER_ID;
-    if (clientId && channelUserId && config.oauthToken) {
-        console.log('🔄 Starting redemption poller (fallback method)...');
-        const poller = new redemptionPoller_1.RedemptionPoller(bot, {
-            clientId,
-            oauthToken: config.oauthToken,
+    let pubSubListener = null;
+    let adMonitor = null;
+    const broadcasterToken = config.broadcasterOAuthToken || config.oauthToken;
+    if (channelUserId && broadcasterToken) {
+        console.log('🔄 Starting Twitch PubSub listener for channel point redemptions...');
+        pubSubListener = new pubsubListener_1.RedemptionPubSub(bot, {
+            oauthToken: broadcasterToken,
             broadcasterId: channelUserId,
-            pollInterval: 30000, // Poll every 30 seconds
         });
-        poller.start().catch(err => {
-            console.warn('⚠️  Redemption poller failed to start:', err);
-            console.warn('   Make sure TWITCH_CLIENT_ID and TWITCH_CHANNEL_USER_ID are set correctly');
-        });
+        pubSubListener.start();
     }
     else {
-        console.log('⚠️  Redemption poller disabled - set TWITCH_CLIENT_ID and TWITCH_CHANNEL_USER_ID to enable');
-        console.log('   (Webhooks are the preferred method, but polling works as a fallback)');
+        console.log('⚠️  PubSub listener disabled - set TWITCH_CHANNEL_USER_ID and TWITCH_BROADCASTER_OAUTH_TOKEN (or reuse TWITCH_OAUTH_TOKEN) to enable automatic redemptions');
+        console.log('   (Webhooks remain the recommended method for real-time redemptions)');
+    }
+    if (clientId && channelUserId && broadcasterToken) {
+        console.log('📅 Starting ad schedule monitor...');
+        adMonitor = new adMonitor_1.AdMonitor(bot, {
+            clientId,
+            oauthToken: broadcasterToken,
+            broadcasterId: channelUserId,
+        });
+        adMonitor.start();
+    }
+    else {
+        console.log('⚠️  Ad monitor disabled - set TWITCH_CLIENT_ID, TWITCH_CHANNEL_USER_ID, and TWITCH_BROADCASTER_OAUTH_TOKEN (or reuse TWITCH_OAUTH_TOKEN) to enable ad warnings');
     }
     // Graceful shutdown
     process.on('SIGINT', async () => {
         console.log('\n🛑 Shutting down...');
+        if (pubSubListener)
+            pubSubListener.stop();
+        if (adMonitor)
+            adMonitor.stop();
         await bot.disconnect();
         process.exit(0);
     });
     process.on('SIGTERM', async () => {
         console.log('\n🛑 Shutting down...');
+        if (pubSubListener)
+            pubSubListener.stop();
+        if (adMonitor)
+            adMonitor.stop();
         await bot.disconnect();
         process.exit(0);
     });

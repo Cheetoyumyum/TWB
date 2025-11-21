@@ -221,21 +221,21 @@ Your bot uses channel points for deposits. Here's how to set them up:
 
 1. **Viewer goes to channel points** in your Twitch chat
 2. **Viewer redeems** channel points for "DEPOSIT: 10000" (or any amount)
-3. **Viewer types** `!deposit 10000` in chat (must match the amount they redeemed)
+3. **Bot auto-detects** and deposits instantly (no chat command needed). If it doesn’t, the **streamer** can type `!deposit 10000` to force it.
 4. **Bot deposits** the points into their account
 5. **Viewer can now** gamble, buy actions, rain points, etc.!
 
 **Important Notes:**
-- The viewer MUST type `!deposit <amount>` AFTER redeeming the channel points
-- The amount in `!deposit` must match the amount they redeemed
-- If they redeem "DEPOSIT: 500", they type `!deposit 500`
-- If they redeem "DEPOSIT: 10000", they type `!deposit 10000`
+- The viewer just redeems the channel points reward — no chat command required
+- The bot watches chat for the “Redeemed DEPOSIT: XXXX” system message (or uses webhooks/PubSub) and auto-deposits that amount
+- If something fails, the streamer can type `!deposit <amount>` (the amount must match the redeemed reward) to manually credit the user
 
 ### Alternative: Automatic Detection with Webhooks (Advanced - Optional)
 
-**Note**: This is OPTIONAL! The manual `!deposit` method works perfectly fine. Webhooks just make it automatic.
+**Note**: This is OPTIONAL! The bot already listens for the “Redeemed DEPOSIT” chat messages. Webhooks/PubSub just make it even more reliable (and remove the need for the streamer to ever type `!deposit` manually).
 
 If you want users to automatically get points when they redeem channel points (without typing `!deposit`), you can set up Twitch EventSub webhooks. See the detailed webhook setup guide in README.md under "Webhook Configuration".
+If you can't set up EventSub yet, make sure `TWITCH_CHANNEL_USER_ID` is set in `.env` — and provide `TWITCH_BROADCASTER_OAUTH_TOKEN` (or reuse `TWITCH_OAUTH_TOKEN` if you're running as the broadcaster) — the bot will automatically use Twitch PubSub as a fallback for local testing. The same webhook endpoint can also be used for `channel.follow`, `channel.subscribe`, `channel.subscription.message`, and `channel.subscription.gift` so the bot can thank viewers automatically.
 
 **Quick Summary:**
 1. Bot runs webhook server on port 3000
@@ -248,7 +248,7 @@ But again, this is optional - the manual method works great!
 
 ## Step 8: Set Up Webhooks (Optional - Advanced)
 
-**SKIP THIS STEP if you're fine with users typing `!deposit` after redeeming channel points!**
+**SKIP THIS STEP if you're fine with the bot reading chat redemption messages (or the streamer typing `!deposit` manually when needed)!**
 
 Webhooks allow automatic detection of channel point redemptions. This is more complex but provides a seamless experience.
 
@@ -261,13 +261,13 @@ Webhooks allow automatic detection of channel point redemptions. This is more co
    - Run: `ngrok http 3000`
    - Copy the HTTPS URL (e.g., `https://abc123.ngrok.io`)
 
-3. **Get your Twitch User ID**:
-   - Go to: https://www.twitch.tv/settings/profile
-   - Your User ID is shown there, OR
+3. **Get your Twitch User ID**: (WIP)
+   - Your User ID is shown there, OR https://www.streamweasels.com/tools/convert-twitch-username-%20to-user-id/
    - Use this API call: `curl -H "Authorization: OAuth YOUR_OAUTH_TOKEN" https://api.twitch.tv/helix/users`
    - Look for the "id" field in the response
 
-4. **Get your Client ID** (if you don't have one):
+4. **Get your Client ID** (if you don't have one): 
+   **WIP**
    - Go to: https://dev.twitch.tv/console/apps
    - Create a new application (name it anything, redirect URL can be `http://localhost`)
    - Copy your Client ID
@@ -324,11 +324,12 @@ Webhooks allow automatic detection of channel point redemptions. This is more co
 
 8. **Test**: Redeem a "DEPOSIT: 100" reward - it should work automatically!
 
-**Note about the webhook secret:**
+**Note about the webhook secret & ad monitor:**
 - The secret is used by your bot to verify that webhook requests are actually from Twitch
 - ngrok doesn't use the secret - it just forwards requests to your bot
 - Your bot verifies the signature using the secret to prevent fake/spoofed webhooks
 - If you don't set `WEBHOOK_SECRET` in `.env`, verification is disabled (works but less secure)
+- Set both `TWITCH_CLIENT_ID` and `TWITCH_CHANNEL_USER_ID` to enable the ad monitor + PubSub fallback (the bot will warn chat when Twitch is about to run an ad)
 
 **For detailed webhook instructions, see README.md**
 
@@ -368,7 +369,7 @@ You should see:
 5. **Deposit points**:
    - Go to your channel points rewards
    - Redeem a "DEPOSIT: 100" channel point reward (or any amount)
-   - In chat, type: `!deposit 100` (use the same amount you redeemed)
+   - In chat, type: `!deposit 100` (streamer only, and only if it didn’t deposit automatically)
    - Type: `!balance` again - Should now show 100 points!
 6. **Try a game**: `!coinflip 50 heads` - Play a coinflip game!
 7. **Check leaderboard**: `!leaderboard` - See top chatters
@@ -446,7 +447,7 @@ If you're stuck:
 ❌ **Channel points title wrong** - Must be exactly `DEPOSIT: 100` format (capital DEPOSIT, space after colon, number)
 ❌ **Not running npm install** - Always run `npm install` first before building!
 ❌ **Forgetting to build** - Run `npm run build` after installing dependencies
-❌ **Typing !deposit before redeeming** - You must redeem channel points FIRST, then type `!deposit <amount>`
+❌ **Manual !deposit before redeeming** - If the streamer needs to run `!deposit`, redeem the channel points reward FIRST, then run `!deposit <amount>`
 ❌ **7TV not working** - If your Twitch username doesn't match your 7TV account, add `SEVENTV_USER_ID` to `.env`
 
 ---

@@ -1,5 +1,12 @@
 import { BotDatabase } from '../database/database';
 import { PRICES, getActionPrice } from '../config/prices';
+import { SevenTVService } from '../emotes/sevenTV';
+
+interface ActionCallbacks {
+  createPoll?: (question: string, options: string[], duration?: number) => Promise<{ success: boolean; message?: string }>;
+  createPrediction?: (title: string, outcomes: string[], duration?: number) => Promise<{ success: boolean; message?: string }>;
+  sendShoutout?: (targetLogin: string) => Promise<{ success: boolean; message?: string }>;
+}
 
 export interface Action {
   id: string;
@@ -11,12 +18,60 @@ export interface Action {
 
 export class ActionsModule {
   private db: BotDatabase;
+  private sevenTV?: SevenTVService;
+  private channel?: string;
   private availableActions: Map<string, Action> = new Map();
   private timeoutCallback?: (target: string, duration: number, message: string) => void;
+  private emotePool: string[] = ['PogChamp', 'Kappa', 'LUL', 'OMEGALUL', 'PepeHands', 'KEKW', 'PogU', 'FeelsStrongMan'];
+  private emoteRefreshInterval?: NodeJS.Timeout;
+  private callbacks?: ActionCallbacks;
 
-  constructor(db: BotDatabase) {
+  constructor(db: BotDatabase, sevenTV?: SevenTVService, channel?: string, callbacks?: ActionCallbacks) {
     this.db = db;
+    this.sevenTV = sevenTV;
+    this.channel = channel?.toLowerCase();
+    this.callbacks = callbacks;
     this.initializeActions();
+    this.refreshEmotePool();
+  }
+
+  private refreshEmotePool(): void {
+    if (!this.sevenTV || !this.channel) return;
+
+    this.sevenTV
+      .getChannelEmotes(this.channel)
+      .then((emotes) => {
+        if (emotes && emotes.length > 0) {
+          this.emotePool = emotes.map((emote) => emote.name);
+        }
+      })
+      .catch((error) => {
+        console.warn('⚠️  Failed to refresh emote pool:', error?.message || error);
+      })
+      .finally(() => {
+        if (this.emoteRefreshInterval) {
+          clearTimeout(this.emoteRefreshInterval);
+        }
+        this.emoteRefreshInterval = setTimeout(() => this.refreshEmotePool(), 5 * 60 * 1000);
+      });
+  }
+
+  private buildEmoteSpam(): string[] {
+    const lines: string[] = [];
+    const pool = this.emotePool.length ? this.emotePool : ['PogChamp', 'Kappa', 'LUL', 'OMEGALUL', 'KEKW'];
+    const lineCount = Math.floor(Math.random() * 16) + 5; // 5-20 lines
+
+    for (let i = 0; i < lineCount; i++) {
+      const emotesPerLine = Math.floor(Math.random() * 9) + 8; // 8-16 emotes per line
+      const lineEmotes: string[] = [];
+      for (let j = 0; j < emotesPerLine; j++) {
+        const emote = pool[Math.floor(Math.random() * pool.length)];
+        lineEmotes.push(emote);
+      }
+      lines.push(lineEmotes.join(' '));
+    }
+
+    return lines;
   }
 
   setTimeoutCallback(callback: (target: string, duration: number, message: string) => void): void {
@@ -58,8 +113,8 @@ export class ActionsModule {
         id: 'shoutout',
         name: 'Shoutout',
         cost: PRICES.actions.shoutout,
-        description: 'Get a shoutout from the bot',
-        type: 'alert',
+        description: 'Trigger a Twitch shoutout (use: !buy shoutout @user)',
+        type: 'command',
       }],
       ['emote', {
         id: 'emote',
@@ -68,18 +123,18 @@ export class ActionsModule {
         description: 'Spam emotes in chat',
         type: 'effect',
       }],
-      ['bonus', {
-        id: 'bonus',
-        name: 'Bonus Points',
-        cost: PRICES.actions.bonus,
-        description: 'Get 500 bonus points!',
-        type: 'command',
-      }],
       ['poll', {
         id: 'poll',
         name: 'Create Poll',
         cost: PRICES.actions.poll,
-        description: 'Create a quick poll (use: !buy poll question? option1 option2)',
+        description: 'Create a Twitch poll (use: !buy poll Question? | Option 1 | Option 2)',
+        type: 'command',
+      }],
+      ['prediction', {
+        id: 'prediction',
+        name: 'Start Prediction',
+        cost: PRICES.actions.prediction,
+        description: 'Start a Twitch prediction (use: !buy prediction Title? | Outcome 1 | Outcome 2)',
         type: 'command',
       }],
       ['countdown', {
@@ -124,13 +179,6 @@ export class ActionsModule {
         description: 'Challenge another user (use: !buy challenge @user)',
         type: 'alert',
       }],
-      ['tip', {
-        id: 'tip',
-        name: 'Tip Streamer',
-        cost: PRICES.actions.tip,
-        description: 'Send a tip message to the streamer',
-        type: 'alert',
-      }],
       ['streak', {
         id: 'streak',
         name: 'Streak Protection',
@@ -149,11 +197,11 @@ export class ActionsModule {
     return this.availableActions.get(actionId.toLowerCase());
   }
 
-  purchaseAction(username: string, actionId: string, params?: Record<string, any>): {
+  async purchaseAction(username: string, actionId: string, params?: Record<string, any>): Promise<{
     success: boolean;
     message: string;
     action?: Action;
-  } {
+  }> {
     const action = this.getAction(actionId);
     if (!action) {
       return {
@@ -173,7 +221,7 @@ export class ActionsModule {
     if (this.db.purchase(username, action.cost, `Purchased ${action.name}`)) {
       return {
         success: true,
-        message: this.executeAction(username, action, params),
+        message: await this.executeAction(username, action, params),
         action: action,
       };
     }
@@ -184,7 +232,7 @@ export class ActionsModule {
     };
   }
 
-  private executeAction(username: string, action: Action, params?: Record<string, any>): string {
+  private async executeAction(username: string, action: Action, params?: Record<string, any>): Promise<string> {
     switch (action.id) {
       case 'alert':
         const message = params?.message || 'Alert triggered!';
@@ -228,23 +276,59 @@ export class ActionsModule {
         return snarkyMessage;
 
       case 'shoutout':
-        return `📢 SHOUTOUT to @${username}! Thanks for being awesome! Follow them at twitch.tv/${username}`;
+        const shoutTarget = params?.target ? params.target.replace('@', '').trim() : null;
+        if (!shoutTarget) {
+          return `@${username} Usage: !buy shoutout @user - Who should we shout out?`;
+        }
+        if (this.callbacks?.sendShoutout) {
+          const shoutResult = await this.callbacks.sendShoutout(shoutTarget);
+          if (shoutResult.success) {
+            return shoutResult.message || `📢 Shoutout sent to @${shoutTarget}!`;
+          }
+          return shoutResult.message || `⚠️ Unable to send shoutout right now.`;
+        }
+        return `📢 Shoutout requested for @${shoutTarget}! (Streamer, run /shoutout ${shoutTarget} in chat)`;
 
       case 'emote':
-        const emotes = ['PogChamp', 'Kappa', 'LUL', 'OMEGALUL', 'PepeHands'];
-        const randomEmote = emotes[Math.floor(Math.random() * emotes.length)];
-        return `${randomEmote} ${randomEmote} ${randomEmote} @${username} emote spam! ${randomEmote} ${randomEmote}`;
-
-      case 'bonus':
-        // Give bonus points
-        this.db.addWin(username, 500, 'Bonus points purchase');
-        const newBalance = this.db.getUserBalance(username)?.balance || 0;
-        return `🎁 @${username} BONUS! You got 500 free points! New balance: ${newBalance.toLocaleString()} points! 🎁`;
+        const spamLines = this.buildEmoteSpam();
+        return spamLines.join('\n');
 
       case 'poll':
-        const pollQuestion = params?.question || params?.message || 'Quick poll';
-        const options = params?.options || ['Yes', 'No'];
+        const pollQuestion = (params?.question || params?.message || 'Quick poll').toString().slice(0, 60);
+        let options = Array.isArray(params?.options) ? params.options.map((o: string) => o.trim()).filter(Boolean) : [];
+        if (options.length < 2) {
+          options = ['Yes', 'No'];
+        }
+        options = options.slice(0, 5);
+        const duration = params?.duration ? Math.min(Math.max(parseInt(params.duration, 10) || 60, 15), 1800) : 60;
+
+        if (this.callbacks?.createPoll) {
+          const result = await this.callbacks.createPoll(pollQuestion, options, duration);
+          if (result.success) {
+            return result.message || `📊 Poll started on Twitch: ${pollQuestion}`;
+          }
+          return result.message || `⚠️ Unable to create Twitch poll right now.`;
+        }
         return `📊 POLL by @${username}: ${pollQuestion} | Options: ${options.join(' vs ')} | React with 1️⃣ or 2️⃣!`;
+
+      case 'prediction':
+        const predictionTitle = (params?.question || params?.message || 'Who wins?').toString().slice(0, 45);
+        let outcomes = Array.isArray(params?.options) ? params.options.map((o: string) => o.trim()).filter(Boolean) : [];
+        if (outcomes.length < 2) {
+          outcomes = ['Yes', 'No'];
+        }
+        outcomes = outcomes.slice(0, 2);
+        const predictionDuration = params?.duration ? Math.min(Math.max(parseInt(params.duration, 10) || 120, 30), 1800) : 120;
+
+        if (this.callbacks?.createPrediction) {
+          const predictionResult = await this.callbacks.createPrediction(predictionTitle, outcomes, predictionDuration);
+          if (predictionResult.success) {
+            return predictionResult.message || `🔮 Prediction started: ${predictionTitle}`;
+          }
+          return predictionResult.message || `⚠️ Unable to start prediction right now.`;
+        }
+
+        return `🔮 Prediction idea: ${predictionTitle} (${outcomes.join(' vs ')}) - Twitch predictions not configured.`;
 
       case 'countdown':
         const countdownNum = params?.number ? parseInt(params.number) : 10;
@@ -294,13 +378,15 @@ export class ActionsModule {
       case 'challenge':
         const challengeTarget = params?.target;
         if (!challengeTarget) {
-          return `@${username} Usage: !buy challenge @user - Who do you want to challenge?`;
+          return `@${username} Usage: !buy challenge @user [bet] - Who do you want to challenge?`;
         }
         const challengeCleanTarget = challengeTarget.replace('@', '').trim();
+        const sponsoredPot = (PRICES.actions.challenge * 2).toLocaleString();
+        const wagerText = params?.wager ? ` for ${params.wager} points` : ` for ${sponsoredPot} points`;
         const challenges = [
-          `⚔️ @${username} challenges @${challengeCleanTarget} to a duel! Who will win? ⚔️`,
-          `🎮 @${username} throws down the gauntlet to @${challengeCleanTarget}! Ready to battle? 🎮`,
-          `🏆 @${username} challenges @${challengeCleanTarget}! May the best player win! 🏆`,
+          `⚔️ @${username} challenges @${challengeCleanTarget}${wagerText}! Type !duel accept @${username} or !duel decline @${username}.`,
+          `🎮 @${username} throws down the gauntlet to @${challengeCleanTarget}${wagerText}! Ready to coinflip?`,
+          `🏆 @${username} challenges @${challengeCleanTarget}${wagerText}! May the coin flip ever be in your favor!`,
         ];
         return challenges[Math.floor(Math.random() * challenges.length)];
 

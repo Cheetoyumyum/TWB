@@ -1,8 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CommandHandler = void 0;
+const helpers_1 = require("../utils/helpers");
+const prices_1 = require("../config/prices");
 class CommandHandler {
     constructor(db, games, actions, sevenTV, channel, adHandler) {
+        this.pendingDuels = new Map();
         this.db = db;
         this.games = games;
         this.actions = actions;
@@ -13,7 +16,7 @@ class CommandHandler {
     setActiveChattersCallback(callback) {
         this.getActiveChattersCallback = callback;
     }
-    async handleCommand(username, command, args) {
+    async handleCommand(username, command, args, context) {
         const cmd = command.toLowerCase();
         switch (cmd) {
             case 'balance':
@@ -21,10 +24,13 @@ class CommandHandler {
             case 'points':
                 return this.getBalance(username);
             case 'deposit':
-                return this.handleDepositCommand(username, args);
+                return this.handleDepositCommand(username, args, context);
             case 'manualdeposit':
             case 'mdeposit':
                 return this.handleManualDeposit(username, args);
+            case 'ecoreset':
+            case 'reseteco':
+                return this.handleEcoReset(username);
             case 'redeem':
                 return this.handleRedeemDeposit(username, args);
             case 'gamble':
@@ -62,7 +68,16 @@ class CommandHandler {
                 return this.getAllInStats(username);
             case 'buy':
             case 'purchase':
-                return this.handleBuyCommand(username, args);
+                return await this.handleBuyCommand(username, args);
+            case 'duel':
+                return this.handleDuelCommand(username, args);
+            case 'accept':
+            case 'acceptduel':
+                return this.acceptDuel(username);
+            case 'decline':
+            case 'deny':
+            case 'denyduel':
+                return this.declineDuel(username);
             case 'actions':
                 return this.getAvailableActions();
             case 'history':
@@ -89,7 +104,7 @@ class CommandHandler {
             case 'givepts':
             case 'givepoints':
             case 'give':
-                return this.handleGivePoints(username, args);
+                return this.handleGivePoints(username, args, context);
             default:
                 return null;
         }
@@ -241,20 +256,26 @@ class CommandHandler {
             : '';
         return `@${username} Balance: ${user.balance.toLocaleString()} pts | Deposited: ${user.totalDeposited.toLocaleString()} | Won: ${user.totalWon.toLocaleString()} | Lost: ${user.totalLost.toLocaleString()}${allInText}`;
     }
-    handleDepositCommand(username, args) {
-        if (args.length > 0) {
-            // If amount provided, treat as deposit command
-            return this.handleRedeemDeposit(username, args);
+    handleDepositCommand(username, args, context) {
+        const isStreamer = context?.isBroadcaster ?? false;
+        if (!isStreamer) {
+            return this.getDepositInstructions(username);
         }
+        if (args.length < 1) {
+            return `@${username} Usage: !deposit <amount> - Add the channel points you just redeemed. Example: !deposit 10000`;
+        }
+        return this.handleRedeemDeposit(username, args);
+    }
+    getDepositInstructions(username) {
         return `@${username} To deposit: 1) Redeem channel points "DEPOSIT: <amount>", then 2) Type !deposit <amount> to confirm. Example: !deposit 10000`;
     }
     handleRedeemDeposit(username, args) {
         if (args.length < 1) {
-            return `@${username} Usage: !deposit <amount> - After redeeming channel points "DEPOSIT: <amount>", type this to deposit. Example: !deposit 10000`;
+            return this.getDepositInstructions(username);
         }
         const amount = parseInt(args[0]);
         if (isNaN(amount) || amount <= 0) {
-            return `@${username} Invalid amount. Use a positive number. Example: !deposit 10000`;
+            return `@${username} Invalid amount. Usage: !deposit <amount> (example: !deposit 10000)`;
         }
         // Deposit the points
         this.db.deposit(username, amount);
@@ -273,6 +294,10 @@ class CommandHandler {
         this.db.deposit(username, amount);
         const newBalance = this.db.getUserBalance(username)?.balance || 0;
         return `@${username} Manually deposited ${amount} points! New balance: ${newBalance}`;
+    }
+    handleEcoReset(username) {
+        this.db.resetEconomy();
+        return `@${username} Economy reset complete. All balances cleared.`;
     }
     handleGambleCommand(username, args) {
         if (args.length < 2) {
@@ -403,9 +428,9 @@ class CommandHandler {
         }
         return this.games.roulette(username, bet, choice).message;
     }
-    handleBuyCommand(username, args) {
+    async handleBuyCommand(username, args) {
         if (args.length < 1) {
-            return `@${username} Usage: !buy <action> [params]. Use !actions to see available actions. Examples: !buy timeout @user, !buy alert Hello!, !buy poll Question? Yes No`;
+            return `@${username} Usage: !buy <action> [params]. Run !actions to see syntax (e.g., !buy timeout @user, !buy poll Question? | Option 1 | Option 2).`;
         }
         const actionId = args[0].toLowerCase();
         // Special handling for different action types
@@ -420,13 +445,17 @@ class CommandHandler {
             params = { target: args[1] };
         }
         else if (actionId === 'challenge' && args.length > 1) {
-            params = { target: args[1] };
+            params = { target: args[1], wager: args[2] };
         }
-        else if (actionId === 'poll' && args.length > 1) {
-            // Format: !buy poll Question? option1 option2
-            const question = args[1];
-            const options = args.slice(2);
-            params = { question, options: options.length > 0 ? options : ['Yes', 'No'] };
+        else if (actionId === 'poll' || actionId === 'prediction') {
+            const parsed = this.parsePipeArgs(args);
+            if (!parsed) {
+                const usage = actionId === 'poll'
+                    ? `@${username} Usage: !buy poll Question? | Option 1 | Option 2 [| duration=120]`
+                    : `@${username} Usage: !buy prediction Title? | Outcome 1 | Outcome 2 [| duration=120]`;
+                return usage;
+            }
+            params = parsed;
         }
         else if (actionId === 'countdown' && args.length > 1) {
             params = { number: args[1] };
@@ -440,13 +469,21 @@ class CommandHandler {
         else if (args.length > 1) {
             params = { message: args.slice(1).join(' ') };
         }
-        const result = this.actions.purchaseAction(username, actionId, params);
+        const result = await this.actions.purchaseAction(username, actionId, params);
+        if (result.success &&
+            result.action?.id === 'challenge' &&
+            params.target) {
+            const duelMessage = this.issueDuelChallenge(username, params.target, params.wager, true);
+            return `${result.message}\n${duelMessage}`;
+        }
         return result.message;
     }
     getAvailableActions() {
         const actions = this.actions.getAvailableActions();
-        const actionList = actions.map(a => `${a.name} (${a.cost} pts)`).join(', ');
-        return `Available actions: ${actionList}. Use !buy <action> to purchase.`;
+        const summary = actions
+            .map((action) => `${action.name} ${action.cost.toLocaleString()}pts → ${this.getActionUsageHint(action.id)}`)
+            .join(' | ');
+        return `🛒 ACTIONS: ${summary} | Run !buy <action> … (see syntax above).`;
     }
     getTransactionHistory(username) {
         const transactions = this.db.getTransactions(username, 5);
@@ -457,6 +494,20 @@ class CommandHandler {
             .map(t => `${t.type}: ${t.amount > 0 ? '+' : ''}${t.amount} (${t.description})`)
             .join(' | ');
         return `@${username} Recent: ${history}`;
+    }
+    handleDuelCommand(username, args) {
+        this.cleanupExpiredDuels();
+        if (args.length < 1) {
+            return this.getDuelUsage(username);
+        }
+        const subCommand = args[0].toLowerCase();
+        if (subCommand === 'accept') {
+            return this.acceptDuel(username, args[1]);
+        }
+        if (subCommand === 'decline' || subCommand === 'deny') {
+            return this.declineDuel(username, args[1]);
+        }
+        return this.issueDuelChallenge(username, args[0], args[1]);
     }
     handleBlackjack(username, args) {
         if (args.length < 1) {
@@ -502,6 +553,164 @@ class CommandHandler {
             return `@${username} Invalid bet amount.`;
         }
         return this.games.wheelOfFortune(username, bet).message;
+    }
+    issueDuelChallenge(challenger, targetArg, betArg, fromAction = false) {
+        const target = this.cleanUsername(targetArg);
+        if (!target) {
+            return `@${challenger} Please specify who you want to challenge. Example: !duel @user 500`;
+        }
+        if (target.toLowerCase() === challenger.toLowerCase()) {
+            return `@${challenger} You can't challenge yourself!`;
+        }
+        const minBet = (0, prices_1.getGameMinBet)('coinflip');
+        let bet = minBet;
+        let sponsoredPot = 0;
+        let challengerStake = 0;
+        if (fromAction) {
+            sponsoredPot = prices_1.PRICES.actions.challenge * 2;
+            bet = sponsoredPot / 2;
+        }
+        else {
+            const challengerData = this.db.getUserBalance(challenger);
+            if (!challengerData || challengerData.balance <= 0) {
+                return `@${challenger} You don't have any points to wager!`;
+            }
+            if (betArg) {
+                const wagerText = betArg.toLowerCase();
+                if (['all', 'allin', 'all-in'].includes(wagerText)) {
+                    bet = challengerData.balance;
+                }
+                else {
+                    const parsed = parseInt(betArg.replace(/,/g, ''), 10);
+                    if (isNaN(parsed) || parsed < minBet) {
+                        return `@${challenger} Minimum duel wager is ${minBet.toLocaleString()} points.`;
+                    }
+                    bet = parsed;
+                }
+            }
+            if (bet < minBet) {
+                return `@${challenger} Minimum duel wager is ${minBet.toLocaleString()} points.`;
+            }
+            if (bet > challengerData.balance) {
+                bet = challengerData.balance;
+            }
+            if (!this.db.withdraw(challenger, bet)) {
+                return `@${challenger} You need ${bet.toLocaleString()} points to issue this duel.`;
+            }
+            challengerStake = bet;
+        }
+        const key = this.getDuelKey(challenger, target);
+        this.pendingDuels.set(key, {
+            challenger,
+            target,
+            bet,
+            challengerStake,
+            targetStake: 0,
+            sponsoredPot,
+            createdAt: Date.now(),
+        });
+        const acceptLine = `Accept with !accept${fromAction ? '' : ` @${challenger}`} (or !duel accept @${challenger})`;
+        const declineLine = `Decline with !decline${fromAction ? '' : ` @${challenger}`}`;
+        if (fromAction) {
+            return `⚔️ Challenge purchased! @${target}, @${challenger} wants a sponsored duel worth ${sponsoredPot.toLocaleString()} points! ${acceptLine}; ${declineLine}. (Expires in 2 minutes)`;
+        }
+        return `⚔️ Challenge issued! @${target}, @${challenger} locked in ${bet.toLocaleString()} points. ${acceptLine}; ${declineLine}. (Expires in 2 minutes)`;
+    }
+    acceptDuel(target, challengerArg) {
+        let pending;
+        let challenger;
+        if (challengerArg) {
+            challenger = this.cleanUsername(challengerArg);
+            if (!challenger) {
+                return `@${target} Please specify who challenged you. Example: !duel accept @username`;
+            }
+            pending = this.pendingDuels.get(this.getDuelKey(challenger, target));
+        }
+        else {
+            pending = this.findLatestDuelForTarget(target);
+            challenger = pending?.challenger;
+        }
+        if (!pending || !challenger) {
+            return `@${target} You don't have a pending challenge${challengerArg ? ` from ${challengerArg}` : ''}.`;
+        }
+        if (Date.now() - pending.createdAt > 2 * 60 * 1000) {
+            this.refundChallenger(pending);
+            this.pendingDuels.delete(this.getDuelKey(challenger, target));
+            return `@${target} The challenge from ${challenger} expired.`;
+        }
+        if (!pending.sponsoredPot) {
+            if (!this.db.withdraw(target, pending.bet)) {
+                this.refundChallenger(pending);
+                this.pendingDuels.delete(this.getDuelKey(challenger, target));
+                return `@${target} You need ${pending.bet.toLocaleString()} points to accept this duel.`;
+            }
+            pending.targetStake = pending.bet;
+        }
+        const totalPot = pending.challengerStake + pending.targetStake + pending.sponsoredPot;
+        const challengerWins = Math.random() < 0.5;
+        const winner = challengerWins ? pending.challenger : pending.target;
+        const loser = challengerWins ? pending.target : pending.challenger;
+        this.db.addWin(winner, totalPot, `Duel vs ${loser} (won ${totalPot} points)`);
+        this.pendingDuels.delete(this.getDuelKey(challenger, target));
+        const winnerBalance = this.db.getUserBalance(winner)?.balance || 0;
+        return `⚔️ COINFLIP DUEL ⚔️ ${winner} defeats ${loser} and scoops ${totalPot.toLocaleString()} points! ${winner}'s new balance: ${winnerBalance.toLocaleString()} pts`;
+    }
+    declineDuel(target, challengerArg) {
+        let pending;
+        let challenger;
+        if (challengerArg) {
+            challenger = this.cleanUsername(challengerArg);
+            if (!challenger) {
+                return `@${target} Please specify who challenged you. Example: !duel decline @username`;
+            }
+            pending = this.pendingDuels.get(this.getDuelKey(challenger, target));
+        }
+        else {
+            pending = this.findLatestDuelForTarget(target);
+            challenger = pending?.challenger;
+        }
+        if (!pending || !challenger) {
+            return `@${target} You don't have a pending challenge${challengerArg ? ` from ${challengerArg}` : ''}.`;
+        }
+        this.refundChallenger(pending);
+        this.pendingDuels.delete(this.getDuelKey(challenger, target));
+        return `@${target} declined ${challenger}'s duel. Maybe next time!`;
+    }
+    cleanupExpiredDuels() {
+        const now = Date.now();
+        for (const [key, duel] of this.pendingDuels.entries()) {
+            if (now - duel.createdAt > 2 * 60 * 1000) {
+                this.refundChallenger(duel);
+                this.pendingDuels.delete(key);
+            }
+        }
+    }
+    refundChallenger(duel) {
+        if (duel.challengerStake > 0) {
+            this.db.addWin(duel.challenger, duel.challengerStake, 'Duel refund');
+            duel.challengerStake = 0;
+        }
+    }
+    findLatestDuelForTarget(target) {
+        const lowerTarget = target.toLowerCase();
+        let latest;
+        for (const duel of this.pendingDuels.values()) {
+            if (duel.target.toLowerCase() === lowerTarget) {
+                if (!latest || duel.createdAt > latest.createdAt) {
+                    latest = duel;
+                }
+            }
+        }
+        return latest;
+    }
+    getDuelUsage(username) {
+        return `@${username} Usage: !duel @user <bet|all> to challenge. Target can respond with !accept [@challenger] or !decline [@challenger].`;
+    }
+    cleanUsername(raw) {
+        return raw?.replace('@', '').trim() || '';
+    }
+    getDuelKey(challenger, target) {
+        return `${challenger.toLowerCase()}::${target.toLowerCase()}`;
     }
     handleRPS(username, args) {
         if (args.length < 2) {
@@ -560,9 +769,15 @@ class CommandHandler {
         return message;
     }
     getHelp() {
-        return `🎮 Games: !coinflip <bet> <heads|tails>, !dice <bet>, !slots <bet>, !roulette <bet> <choice>, !blackjack <bet>, !wheel <bet>, !rps <bet> <rock|paper|scissors> | 💰 Economy: !balance, !leaderboard, !history | 🌧️ Rain: !rain <amount> <people|max> | 🛒 Actions: !buy <action> <target>, !actions | 🎭 Emotes: !emote <name>, !emotelist, !randemote | 📺 Ads: !ad [seconds] | 👑 Mod: !givepts @user <amount> | 📖 Use !commands for full list`;
+        return [
+            'ℹ️ QUICK GUIDE:',
+            '🎮 Games: !coinflip <bet> <h/t> | !dice <bet> | !slots <bet> | !roulette <bet> <choice> | !blackjack <bet> (then !hit/!stand) | !wheel <bet> | !rps <bet> <rock/paper/scissors> | !duel @user <bet>',
+            '💰 Economy: !balance | !leaderboard | !history | !rain <amount> <count|max>',
+            '🛒 Actions: !actions to view prices, then !buy <action> … (examples: timeout @user, poll Question? | A | B)',
+            '📚 Need more? Use !commands for the full list.',
+        ].join(' ');
     }
-    handleGivePoints(username, args) {
+    handleGivePoints(username, args, context) {
         if (args.length < 2) {
             return `@${username} Usage: !givepts <@user> <amount> - Give points to a user (Streamer/Mod only)`;
         }
@@ -571,14 +786,85 @@ class CommandHandler {
         if (isNaN(amount) || amount <= 0) {
             return `@${username} Invalid amount. Use a positive number.`;
         }
-        // Note: Permission checking should be done in twitchBot.ts before calling this
-        // For now, we'll allow it (you can add permission checks in the bot)
+        if (targetUser.toLowerCase() === username.toLowerCase()) {
+            return `@${username} You can't give points to yourself.`;
+        }
+        const giver = this.db.getUserBalance(username);
+        if (!giver || giver.balance <= 0) {
+            return `@${username} You don't have any points to give!`;
+        }
+        const isStreamer = context?.isBroadcaster ?? false;
+        const fee = isStreamer ? 0 : Math.max(Math.ceil(amount * 0.1), 100);
+        const totalCost = amount + fee;
+        if (giver.balance < totalCost) {
+            return `@${username} You need ${totalCost.toLocaleString()} points to give that amount (includes fee of ${fee.toLocaleString()} pts).`;
+        }
+        this.db.addLoss(username, totalCost, `Gifted ${amount} pts to ${targetUser}${fee > 0 ? ' (incl. fee)' : ''}`);
         this.db.addWin(targetUser, amount, `Gifted by ${username}`);
         const newBalance = this.db.getUserBalance(targetUser)?.balance || 0;
-        return `@${username} ✅ Gave ${amount.toLocaleString()} points to @${targetUser}! Their new balance: ${newBalance.toLocaleString()} points`;
+        const feeText = fee > 0 ? ` (cost you ${fee.toLocaleString()} pts fee)` : '';
+        return `@${username} ✅ Gave ${amount.toLocaleString()} points to @${targetUser}${feeText}. Their new balance: ${newBalance.toLocaleString()} pts`;
+    }
+    getActionUsageHint(actionId) {
+        switch (actionId) {
+            case 'alert':
+                return '!buy alert <message>';
+            case 'highlight':
+                return '!buy highlight <message>';
+            case 'sound':
+                return '!buy sound';
+            case 'timeout':
+                return '!buy timeout @user';
+            case 'shoutout':
+                return '!buy shoutout @user';
+            case 'emote':
+                return '!buy emote';
+            case 'poll':
+                return '!buy poll Q? | Option 1 | Option 2 [| duration]';
+            case 'prediction':
+                return '!buy prediction Title? | Outcome 1 | Outcome 2 [| duration]';
+            case 'countdown':
+                return '!buy countdown <seconds>';
+            case 'quote':
+                return '!buy quote <message>';
+            case 'roast':
+                return '!buy roast @user';
+            case 'compliment':
+                return '!buy compliment';
+            case 'raid':
+                return '!buy raid @channel';
+            case 'challenge':
+                return '!buy challenge @user [bet]';
+            case 'streak':
+                return '!buy streak';
+            default:
+                return `!buy ${actionId}`;
+        }
     }
     getAllCommands() {
-        return `📋 ALL COMMANDS: 🎮 Games: !coinflip <bet> <h/t>, !dice <bet>, !slots <bet>, !roulette <bet> <red/black/number>, !blackjack <bet>, !wheel <bet>, !rps <bet> <rock/paper/scissors> | 💰 Economy: !balance, !leaderboard, !history | 🌧️ Rain: !rain <amount> <people|max> | 🛒 Actions: !buy timeout @user, !buy alert <msg>, !buy shoutout, !actions | 🎭 Emotes: !emote <name>, !emotelist [search], !randemote | 📺 Ads: !ad [seconds] or !ad end | 👑 Mod: !givepts @user <amount> | 💡 Type !help for quick guide`;
+        return ['📋 COMMANDS:', '🎮 Games → !coinflip <bet> <h/t>, !dice <bet>, !slots <bet>, !roulette <bet> <choice>, !blackjack <bet> (!hit/!stand), !wheel <bet>, !rps <bet> <r/p/s>, !duel @user <bet|all>', '💰 Economy → !balance | !leaderboard | !history | !rain <amount> <count|max> | (Streamer) !deposit <amount> | !allin', '🛒 Actions → !actions + !buy <action> … (timeout @user, poll Q? | A | B, etc.)', '⚙️ Mods → !givepts @user <amount> | !ecoReset | !help / !commands'].join(' ');
+    }
+    parsePipeArgs(args) {
+        if (args.length < 2)
+            return null;
+        const combined = args.slice(1).join(' ');
+        const parts = combined.split('|').map((part) => part.trim()).filter(Boolean);
+        if (parts.length < 3) {
+            return null;
+        }
+        let duration;
+        const last = parts[parts.length - 1];
+        const durationMatch = last.match(/^duration\s*=?\s*(\d+)/i);
+        if (durationMatch) {
+            duration = (0, helpers_1.sanitizeNumber)(durationMatch[1], 15, 1800) ?? undefined;
+            parts.pop();
+        }
+        const question = parts[0];
+        const options = parts.slice(1);
+        if (!question || options.length < 2) {
+            return null;
+        }
+        return { question, options, duration };
     }
 }
 exports.CommandHandler = CommandHandler;

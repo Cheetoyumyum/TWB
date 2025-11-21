@@ -32,6 +32,10 @@ A comprehensive Twitch bot for chat engagement, channel points management, gambl
 - Shoutouts and emote spam
 - Extensible action system
 
+### 💜 Community Signals
+- Automatic “thank you” messages for new followers, subs, resubs, and gifted subs
+- Works via EventSub (same webhook endpoint) so there’s no polling or missed events
+
 ### 🎭 7TV Emote Integration
 - Automatically fetches and uses channel 7TV emotes
 - Bot responses can include random 7TV emotes
@@ -40,9 +44,10 @@ A comprehensive Twitch bot for chat engagement, channel points management, gambl
 - Seamless integration with chat interactions
 
 ### 📺 Ad Break Management
-- Automatic ad break announcements with friendly messages
-- Timer-based ad management (`!ad [seconds]`)
-- Customizable ad start/end messages
+- Automatic warnings **before Twitch’s scheduled ads** hit, using the Ads API (`channel:read:ads`)
+- Friendly messages during live ad breaks (without forcing the ad to run)
+- Timer-based ad management (`!ad [seconds]`) when you choose to trigger a break
+- Customizable ad start/end messages and auto “welcome back” once the break is over
 - Manual ad end command (`!ad end`)
 - Engaging, community-friendly ad notifications
 
@@ -50,8 +55,8 @@ A comprehensive Twitch bot for chat engagement, channel points management, gambl
 
 #### 💰 Economy & Deposits
 - `!balance` (or `!bal`, `!points`) - Check your current point balance, total deposited, won, and lost
-- `!deposit <amount>` (or `!redeem <amount>`) - After redeeming channel points "DEPOSIT: X", type this to deposit them
-  - Example: Redeem "DEPOSIT: 10000" channel points, then type `!deposit 10000`
+- `!deposit <amount>` (Streamer only) - Manual fallback to deposit redeemed channel points if automatic detection fails
+  - Example: Streamer can run `!deposit 10000` to force a deposit that didn’t auto-complete
 - `!history` (or `!transactions`) - View your last 5 transactions
 - `!leaderboard` (or `!lb`, `!top`) - See the top 10 richest chatters
 - `!allin` (or `!allins`, `!allinstats`) - Check your all-in statistics (wins/losses when betting your entire balance)
@@ -61,7 +66,10 @@ A comprehensive Twitch bot for chat engagement, channel points management, gambl
 
 #### 👑 Moderator/Streamer Commands
 - `!givepts <@user> <amount>` (or `!givepoints`, `!give`) - Give points to a user (Streamer/Mod only)
-  - Example: `!givepts @SomeUser 5000` - Give 5000 points to SomeUser
+  - Example: `!givepts @SomeUser 5000`
+  - **Non-streamer givers pay a 10% fee (min 100 pts) that is burned**, so mods need enough balance to cover the gift + fee. Streamer gifts are fee-free.
+- `!accept [@user]` / `!decline [@user]` - Quickly respond to the most recent duel challenge without retyping `!duel accept @...`
+- `!ecoReset` - Streamer-only emergency nuke that clears all balances and stats
 
 #### 🎮 Gambling Games
 All games support `all` or `allin` to bet your entire balance!
@@ -80,36 +88,27 @@ All games support `all` or `allin` to bet your entire balance!
   - Example: `!wheel 250` or `!wheel all`
 - `!rps <bet|all> <rock|paper|scissors>` (or `!rockpaperscissors`) - Rock Paper Scissors! 2x payout if you win
   - Example: `!rps 150 rock` or `!rps all paper`
+- `!duel @user <bet|all>` - Challenge another chatter to a coinflip duel (winner takes BOTH wagers; target can reply with `!accept` / `!decline` or `!duel accept/decline @you`)
 - `!gamble <game> <bet|all> [options]` (or `!bet`) - Generic gambling command
   - Example: `!gamble coinflip 100 heads` or `!gamble slots all`
 
 #### 🛒 Action Purchases
-Use `!actions` to see all available actions and their prices!
+Use `!actions` to see all available actions and their exact syntax!
 
 - `!buy timeout @user` - Timeout someone for 60 seconds (costs points!)
 - `!buy alert <message>` - Send a custom alert message to chat
-- `!buy shoutout` - Get a shoutout from the bot
-- `!buy bonus` - Get 500 bonus points added to your balance
-- `!buy poll <question> <option1> <option2>` - Create a quick poll
-  - Example: `!buy poll Should we play this game? Yes No`
-- `!buy roast @user` - Get a friendly roast of someone
-  - Example: `!buy roast @SomeUser`
-- `!buy compliment` - Get a nice compliment from the bot
-- `!buy quote <text>` - Save a memorable quote
-  - Example: `!buy quote This is the best stream ever!`
+- `!buy shoutout @user` - Trigger a Twitch shoutout via the API (requires `channel:manage:moderators`)
+- `!buy emote` - Spam emotes in chat (real multi-line spam using your 7TV emotes)
+- `!buy poll Question? | Option 1 | Option 2 [| duration=120]` - Create a real Twitch poll (`channel:manage:polls` scope)
+- `!buy prediction Title? | Outcome 1 | Outcome 2 [| duration=120]` - Start a Twitch prediction (`channel:manage:predictions`, costs 10k pts)
+- `!buy roast @user` / `!buy compliment` / `!buy quote <text>` - Fun social actions
 - `!buy countdown <seconds>` - Start a countdown (1-60 seconds)
-  - Example: `!buy countdown 10`
 - `!buy raid @channel` - Announce a raid target
-  - Example: `!buy raid @AnotherStreamer`
-- `!buy challenge @user` - Challenge another user
-  - Example: `!buy challenge @SomeUser`
-- `!buy tip <message>` - Send a tip message to the streamer
-  - Example: `!buy tip Great stream today!`
+- `!buy challenge @user [bet]` - Challenge someone and auto-create a coinflip duel invite (they confirm with `!accept`). Prize pot is fully sponsored (2× the action price).
 - `!buy streak` - Protect your gambling streak (prevents one loss)
 - `!buy highlight` - Highlight your message in chat
 - `!buy sound` - Play a sound alert
-- `!buy emote` - Spam emotes in chat
-- `!actions` - List all available actions with their prices
+- `!actions` - List all available actions with syntax hints
 
 #### 🎭 7TV Emotes
 - `!emote <name>` (or `!emotes`) - Use a 7TV emote from the channel
@@ -164,6 +163,16 @@ Use `!actions` to see all available actions and their prices!
    - `HUGGINGFACE_API_KEY` - For AI chat (FREE!) - https://huggingface.co/settings/tokens
    - `SEVENTV_USER_ID` - Your 7TV user ID or full URL (if Twitch username doesn't match)
      - Example: `01GFW04N9G00007A0Y2C1CSMQR` or `https://7tv.app/users/01GFW04N9G00007A0Y2C1CSMQR`
+   - `TWITCH_BROADCASTER_OAUTH_TOKEN` - (Optional) A broadcaster token with `channel:read:redemptions`, `channel:read:ads`, `channel:manage:polls`, `channel:manage:predictions`, etc. Use this if you want the bot to stay logged in as a separate account but still access PubSub/ad data and create polls/predictions. If omitted, the bot reuses `TWITCH_OAUTH_TOKEN`.
+   - `TWITCH_CLIENT_ID` - Required for ad warnings (Ads API) and recommended for EventSub setup. (WIP) https://www.streamweasels.com/tools/convert-twitch-username-%20to-user-id/
+   - `TWITCH_CHANNEL_USER_ID` - Your Twitch user ID (needed for PubSub + ad monitor). Get via:
+     ```
+     curl -H "Authorization: Bearer YOUR_OAUTH_TOKEN" \
+          -H "Client-Id: YOUR_CLIENT_ID" \
+          https://api.twitch.tv/helix/users?login=YOUR_USERNAME
+     ```
+     or use https://twitchid.net/
+   - `WEBHOOK_SECRET` - Secret used to verify EventSub webhooks (use `openssl rand -hex 16`)
    - `PORT` - Webhook server port (default: 3000)
    - `DATABASE_PATH` - Database file path (default: ./data/bot.json)
 
@@ -219,11 +228,18 @@ Use `!actions` to see all available actions and their prices!
 
 ### Webhook Configuration (Optional - Advanced)
 
-**Note**: Webhooks are optional! The bot works fine with manual `!deposit` commands. Webhooks allow automatic detection of channel point redemptions without users needing to type `!deposit`.
+**Note**: Webhooks are optional! Without them, the streamer can still use `!deposit` manually after viewers redeem channel points. Webhooks/PubSub simply automate the deposit so viewers never need to type anything.
+If you can't use EventSub yet, the bot will automatically fall back to Twitch **PubSub** (requires `TWITCH_CHANNEL_USER_ID` and a broadcaster OAuth token with `channel:read:redemptions` — set `TWITCH_BROADCASTER_OAUTH_TOKEN`, or reuse `TWITCH_OAUTH_TOKEN` if you're running everything under the streamer account). PubSub works great for local/dev testing, while EventSub is still the recommended production setup.
+
+While you’re here, you can also add the **follow/subscription** EventSub types to the exact same webhook endpoint so the bot can thank viewers automatically:
+- `channel.follow`
+- `channel.subscribe`
+- `channel.subscription.message`
+- `channel.subscription.gift`
 
 #### What Webhooks Do
 - Automatically detect when users redeem "DEPOSIT: X" channel points
-- No need for users to type `!deposit` after redeeming
+- No need for users (or mods) to type `!deposit` after redeeming
 - Seamless experience for your viewers
 
 #### Prerequisites
@@ -335,7 +351,7 @@ curl -X POST http://localhost:3000/trigger/deposit \
 1. **Check your balance**: `!balance`
 2. **Deposit points**: 
    - Redeem channel points "DEPOSIT: 10000" in Twitch
-   - Type: `!deposit 10000`
+  - Type: `!deposit 10000` (streamer only, for manual overrides)
 3. **Check leaderboard**: `!leaderboard`
 
 ### Playing Games
@@ -444,8 +460,8 @@ Edit `src/ai/chatHandler.ts` to adjust the system prompt and response behavior.
 
 ### Channel points not working
 - Verify the redemption title matches "DEPOSIT: #" format exactly (capital DEPOSIT, space after colon)
-- Users must redeem channel points FIRST, then type `!deposit <amount>` in chat
-- The amount in `!deposit` must match the amount they redeemed
+- Users redeem channel points FIRST, and the bot auto-deposits via webhook/PubSub
+- If something fails, the **streamer** can type `!deposit <amount>` in chat to force the deposit (amount must match the redeemed reward)
 - Check that webhooks are properly configured if using EventSub
 - Use `!manualdeposit <amount>` for testing (admin/mod only)
 

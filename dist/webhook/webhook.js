@@ -53,7 +53,8 @@ class WebhookServer {
                     return res.status(200).send(event.challenge);
                 }
                 // Handle different webhook formats
-                if (event.subscription?.type === 'channel.channel_points_custom_reward_redemption.add') {
+                const eventType = event.subscription?.type;
+                if (eventType === 'channel.channel_points_custom_reward_redemption.add') {
                     const redemption = event.event;
                     const username = redemption.user_name || redemption.user_login;
                     const redemptionTitle = redemption.reward?.title || '';
@@ -66,6 +67,40 @@ class WebhookServer {
                     else {
                         res.status(400).json({ error: 'Missing required fields' });
                     }
+                }
+                else if (eventType === 'channel.follow') {
+                    const follower = event.event?.user_name || event.event?.user_login;
+                    if (follower) {
+                        console.log(`🎉 Webhook: ${follower} followed`);
+                        this.bot.handleNewFollower(follower);
+                    }
+                    res.status(200).json({ received: true });
+                }
+                else if (eventType === 'channel.subscribe') {
+                    const subEvent = event.event;
+                    const subscriber = subEvent?.user_name || subEvent?.user_login;
+                    if (subscriber) {
+                        console.log(`💜 Webhook: ${subscriber} subscribed (tier ${subEvent?.tier})`);
+                        this.bot.handleNewSubscriber(subscriber, subEvent?.tier, subEvent?.is_gift);
+                    }
+                    res.status(200).json({ received: true });
+                }
+                else if (eventType === 'channel.subscription.message') {
+                    const subEvent = event.event;
+                    const subscriber = subEvent?.user_name || subEvent?.user_login;
+                    if (subscriber) {
+                        this.bot.handleNewSubscriber(subscriber, subEvent?.tier, true, subEvent?.message?.text);
+                    }
+                    res.status(200).json({ received: true });
+                }
+                else if (eventType === 'channel.subscription.gift') {
+                    const giftEvent = event.event;
+                    const gifter = giftEvent?.user_name || giftEvent?.user_login || 'Anonymous';
+                    const total = giftEvent?.total ?? 1;
+                    const isAnonymous = giftEvent?.is_anonymous ?? false;
+                    console.log(`🎁 Webhook: ${gifter} gifted ${total} subs`);
+                    this.bot.handleGiftSubscription(gifter, total, isAnonymous);
+                    res.status(200).json({ received: true });
                 }
                 else {
                     res.status(200).json({ received: true });

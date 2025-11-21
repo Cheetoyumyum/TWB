@@ -15,7 +15,7 @@ export interface UserBalance {
 export interface Transaction {
   id: number;
   username: string;
-  type: 'deposit' | 'withdraw' | 'win' | 'loss' | 'purchase';
+  type: 'deposit' | 'withdraw' | 'win' | 'loss' | 'purchase' | 'reset';
   amount: number;
   description: string;
   timestamp: string;
@@ -198,7 +198,7 @@ export class BotDatabase {
 
     const key = username.toLowerCase();
     const now = new Date().toISOString();
-    this.data.userBalances[key].balance -= amount;
+    this.data.userBalances[key].balance = Math.max(0, this.data.userBalances[key].balance - amount);
     this.data.userBalances[key].totalLost += amount;
     if (isAllIn) {
       this.data.userBalances[key].allInLosses = (this.data.userBalances[key].allInLosses || 0) + 1;
@@ -206,6 +206,20 @@ export class BotDatabase {
     this.data.userBalances[key].lastUpdated = now;
 
     this.addTransaction(username, 'loss', amount, description);
+  }
+
+  resetEconomy(): void {
+    const now = new Date().toISOString();
+    for (const key of Object.keys(this.data.userBalances)) {
+      this.data.userBalances[key].balance = 0;
+      this.data.userBalances[key].totalWon = 0;
+      this.data.userBalances[key].totalLost = 0;
+      this.data.userBalances[key].allInWins = 0;
+      this.data.userBalances[key].allInLosses = 0;
+      this.data.userBalances[key].lastUpdated = now;
+    }
+    this.addTransaction('system', 'reset', 0, 'Economy reset');
+    this.save();
   }
 
   purchase(username: string, amount: number, description: string): boolean {
