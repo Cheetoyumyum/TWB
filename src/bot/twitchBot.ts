@@ -2,6 +2,7 @@ import tmi from 'tmi.js';
 import { BotDatabase } from '../database/database';
 import { ChatHandler, ChatContext, ResponseIntent } from '../ai/chatHandler';
 import { TriviaGenerator, TriviaQuestion } from '../ai/triviaGenerator';
+import { ChannelInfoService } from '../twitch/channelInfo';
 import { ChannelPointsHandler } from '../channelPoints/channelPoints';
 import { CommandHandler } from '../commands/commands';
 import { GamesModule } from '../games/games';
@@ -35,32 +36,6 @@ const DEFAULT_EMOTE_NAMES = [
   'Kreygasm',
 ];
 
-const TRIVIA_QUESTIONS: TriviaQuestion[] = [
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the capital of France?', answers: ['paris'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: What gas do plants breathe in that humans breathe out?', answers: ['carbon dioxide', 'co2'], source: 'preset' },
-  { prompt: '🧩 Riddle time! I speak without a mouth and hear without ears. What am I?', answers: ['echo'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: Which planet is known as the Red Planet?', answers: ['mars'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: What instrument has keys, pedals, and strings?', answers: ['piano'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: Which animal is known as the King of the Jungle?', answers: ['lion'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the largest ocean on Earth?', answers: ['pacific ocean', 'pacific'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the hardest natural substance?', answers: ['diamond'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: Who painted the Mona Lisa?', answers: ['leonardo da vinci', 'da vinci'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: Which planet has the most moons?', answers: ['saturn'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the tallest mountain in the world?', answers: ['mount everest', 'everest'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: Which metal is liquid at room temperature?', answers: ['mercury'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: What color do you get by mixing blue and yellow?', answers: ['green'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: Which country invented paper?', answers: ['china'], source: 'preset' },
-  { prompt: '🧩 Riddle time! What has hands but can’t clap?', answers: ['clock'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: How many sides does a hexagon have?', answers: ['6', 'six'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: Which element has the chemical symbol “O”?', answers: ['oxygen'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: What do bees make?', answers: ['honey'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the largest mammal on Earth?', answers: ['blue whale', 'whale'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: Which continent is the Sahara Desert on?', answers: ['africa'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: In what sport would you perform a slam dunk?', answers: ['basketball'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the smallest prime number?', answers: ['2', 'two'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: What is the chemical formula for water?', answers: ['h2o'], source: 'preset' },
-  { prompt: '🧠 Trivia! First to answer wins 400 pts: Who wrote "Romeo and Juliet"?', answers: ['william shakespeare', 'shakespeare'], source: 'preset' },
-];
 
 export interface BotConfig {
   username: string;
@@ -107,6 +82,7 @@ export class TwitchBot {
   private activeTrivia?: ActiveTrivia;
   private triviaGenerator?: TriviaGenerator;
   private recentTriviaPrompts: string[] = [];
+  private channelInfo?: ChannelInfoService;
   private channelName: string;
 
   constructor(config: BotConfig) {
@@ -149,6 +125,14 @@ export class TwitchBot {
     );
     this.chatHandler.setCopypastaProvider(() => this.getRandomCopypasta());
     this.triviaGenerator = new TriviaGenerator(config.openaiApiKey, config.groqApiKey);
+    if (config.clientId && config.broadcasterId && (config.broadcasterOAuthToken || config.oauthToken)) {
+      this.channelInfo = new ChannelInfoService({
+        clientId: config.clientId,
+        oauthToken: config.broadcasterOAuthToken || config.oauthToken,
+        broadcasterId: config.broadcasterId!,
+        cacheMs: 20 * 1000,
+      });
+    }
     this.channelPointsHandler = new ChannelPointsHandler(this.db);
     this.commandHandler = new CommandHandler(
       this.db,
@@ -669,14 +653,14 @@ export class TwitchBot {
     await this.startTrivia();
   }
 
-  private async startTrivia(manual: boolean = false): Promise<boolean> {
+  private async startTrivia(manual: boolean = false, forceFreshCategory = false): Promise<boolean> {
     if (this.activeTrivia) {
       if (manual) {
         this.say('⚠️ A trivia question is already active! Answer that one first.');
       }
       return false;
     }
-    const question = await this.generateTriviaQuestion();
+    const question = await this.generateTriviaQuestion(forceFreshCategory);
     if (!question) {
       if (manual) {
         this.say('⚠️ Trivia generator is tired, try again in a bit.');
@@ -692,7 +676,11 @@ export class TwitchBot {
     const prompt = manual
       ? `${prefix}${question.prompt} (mod triggered)`
       : `${prefix}${question.prompt}`;
-    console.log(`[Trivia] Serving ${question.source ?? 'preset'} question: ${question.prompt}`);
+    console.log(
+      `[Trivia] Serving ${question.source ?? 'preset'} question: ${question.prompt} | Answers: ${question.answers.join(
+        ', '
+      )}`
+    );
     this.say(prompt);
     this.recentTriviaPrompts.push(question.prompt.toLowerCase());
     if (this.recentTriviaPrompts.length > 10) {
@@ -748,30 +736,39 @@ export class TwitchBot {
     return this.recentTriviaPrompts.some((existing) => existing === normalized);
   }
 
-  private async generateTriviaQuestion(): Promise<TriviaQuestion | null> {
+  private async generateTriviaQuestion(forceFreshCategory = false): Promise<TriviaQuestion | null> {
     try {
-      if (this.triviaGenerator) {
-        for (let attempt = 0; attempt < 3; attempt++) {
-          const aiQuestion = await this.triviaGenerator.generateTrivia(this.recentTriviaPrompts.slice(-10));
-          if (!aiQuestion) {
-            continue;
-          }
-          if (this.isRecentTriviaDuplicate(aiQuestion.prompt)) {
-            console.warn('[Trivia] AI generated duplicate question, retrying...');
-            continue;
-          }
-          console.log('[Trivia] AI generated new question.');
-          return aiQuestion;
-        }
-        console.warn('[Trivia] AI generator returned duplicates/empty payload; falling back to presets.');
-      } else {
-        console.warn('[Trivia] No AI trivia generator configured; using presets.');
+      if (!this.triviaGenerator) {
+        console.warn('[Trivia] No AI trivia generator configured.');
+        return null;
       }
+      let categoryPrompt = '';
+      if (this.channelInfo) {
+        const info = await this.channelInfo.getChannelInfo(forceFreshCategory);
+        if (info?.gameName && Math.random() < 0.2) {
+          categoryPrompt = `Category: ${info.gameName}`;
+        }
+      }
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const aiQuestion = await this.triviaGenerator.generateTrivia(
+          this.recentTriviaPrompts.slice(-10),
+          categoryPrompt
+        );
+        if (!aiQuestion) {
+          continue;
+        }
+        if (this.isRecentTriviaDuplicate(aiQuestion.prompt)) {
+          console.warn('[Trivia] AI generated duplicate question, retrying...');
+          continue;
+        }
+        console.log('[Trivia] AI generated new question.');
+        return aiQuestion;
+      }
+      console.warn('[Trivia] AI generator returned duplicates/empty payload after retries.');
     } catch (error) {
       console.warn('⚠️ Failed to generate AI trivia question:', error);
     }
-    const fallback = TRIVIA_QUESTIONS[Math.floor(Math.random() * TRIVIA_QUESTIONS.length)];
-    return fallback.source ? fallback : { ...fallback, source: 'preset' };
+    return null;
   }
 
   private async handleTriviaCommand(
@@ -787,7 +784,7 @@ export class TwitchBot {
     const cleanArgs = args.filter((arg) => arg && arg.trim().length > 0);
     const subcommand = cleanArgs[0]?.toLowerCase() || 'start';
     if (subcommand === 'start') {
-      const started = await this.startTrivia(true);
+      const started = await this.startTrivia(true, true);
       return started
         ? `@${username} Trivia started! First correct answer wins 400 points.`
         : `@${username} There's already an active trivia question.`;

@@ -24,21 +24,29 @@ export class TriviaGenerator {
     }
   }
 
-  async generateTrivia(exclusions: string[] = []): Promise<TriviaQuestion | null> {
+  async generateTrivia(exclusions: string[] = [], categoryHint?: string): Promise<TriviaQuestion | null> {
     const avoidList = exclusions.length
-      ? `Avoid reusing or paraphrasing any of these recent questions or topics: ${exclusions
+      ? `Avoid repeating or paraphrasing ANY of these recent topics/questions: ${exclusions
           .map((q) => `"${q}"`)
           .join(', ')}.`
       : '';
 
-    const instructions = `You are a trivia generator. Produce a short, fun trivia question with a single concise answer.
+    const categoryLine = categoryHint ? `Focus on the current stream theme: ${categoryHint}.` : '';
+
+    const instructions = `You are an elite trivia master. Produce a challenging, creative trivia question with a single concise answer.
 Return ONLY valid JSON of the form {"question":"...","answers":["answer1","answer2"]}.
-Requirements:
-- The question must be understandable without extra context and less than 120 characters.
-- Provide 1-3 acceptable answers. Answers must be lowercase, simple strings with no punctuation.
-- Questions should cover varied general knowledge topics (geography, science, history, literature, pop culture, technology, sports, etc.).
+Rules:
+- The question must be precise, self-contained, and less than 110 characters.
+- The question must be a complete sentence ending with a question mark.
+- Pick harder topics or deep cuts (advanced science, world history, niche pop culture, esports, math, inventions, art, mythology, tech lore, etc.).
 - ${avoidList}
-- Do not include explanations or extra text—just the JSON.`;
+- ${categoryLine}
+- Provide 1-3 accepted answers. Answers must be lowercase strings with no punctuation.
+- Answers should be specific (e.g., "nikola tesla", not just "tesla").
+- When referencing existing franchises (Zelda, Dead by Daylight, Overwatch, etc.), prefer canon, in-game names and official spellings.
+- If you are not absolutely certain the answer is canonically correct, do NOT use that topic—pick a different subject instead.
+- Do NOT produce generic questions like capitals, "largest planet", "chemical symbol", or anything basic.
+- Do NOT include explanations or extra text—output ONLY the JSON.`;
 
     const attempts: Array<() => Promise<string | null>> = [];
     if (this.provider === 'openai' && this.openai) {
@@ -124,14 +132,23 @@ Requirements:
       if (!question || answers.length === 0) {
         return null;
       }
+      let cleanedQuestion = question.trim();
+      cleanedQuestion = cleanedQuestion.replace(/[\s,.;:]+$/g, '');
+      if (!cleanedQuestion.endsWith('?')) {
+        cleanedQuestion = `${cleanedQuestion}?`;
+      }
       answers = answers
         .map((ans) => (typeof ans === 'string' ? ans.trim().toLowerCase() : ''))
         .filter(Boolean);
       if (answers.length === 0) {
         return null;
       }
+      if (this.containsForbiddenPair(cleanedQuestion, answers)) {
+        console.warn('[Trivia] Rejecting response due to known canon mismatch.');
+        return null;
+      }
       return {
-        prompt: `🧠 Trivia! First to answer wins 400 pts: ${question.trim()}`,
+        prompt: `🧠 Trivia! First to answer wins 400 pts: ${cleanedQuestion}`,
         answers,
         source: 'ai',
       };
@@ -139,6 +156,27 @@ Requirements:
       console.error('TriviaGenerator parse error:', error, raw);
       return null;
     }
+  }
+
+  private containsForbiddenPair(question: string, answers: string[]): boolean {
+    const lowerQuestion = question.toLowerCase();
+    if (lowerQuestion.includes('ocarina of time')) {
+      if (lowerQuestion.includes('sacred forest') || lowerQuestion.includes('kokiri') || lowerQuestion.includes('temple of time')) {
+        const hasKokiri = answers.some((ans) => ans.includes('kokiri'));
+        if (!hasKokiri) {
+          return true;
+        }
+      }
+      if (lowerQuestion.includes('ganondorf') && lowerQuestion.includes('steed')) {
+        const hasPhantomGanon = answers.some(
+          (ans) => ans.includes('phantom ganon') || ans.includes('phantom')
+        );
+        if (!hasPhantomGanon) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 }
 
