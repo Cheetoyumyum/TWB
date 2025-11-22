@@ -383,6 +383,8 @@ You should see:
 - `!coinflip 50 heads` - Play a game
 - `!actions` - See purchasable actions
 - `!emotelist` - See 7TV emotes
+- `!twb` - Get the GitHub repository link
+- `!trivia start` - Start a trivia question (mod/streamer only)
 
 ## Troubleshooting
 
@@ -422,6 +424,54 @@ You should see:
 - Make sure you have credits (OpenAI) or haven't exceeded free tier limits
 - The bot works fine without AI - it uses smart context-aware fallback responses
 
+## Step 11: Custom Redemption Messages (Optional)
+
+The bot automatically tracks and announces special redemptions:
+
+1. **"Daily [x]" redemptions** - When someone redeems "Daily monster", "Daily burger", etc.
+   - Bot will say: `@username has redeemed their daily monster (#1) times!`
+   - Counts increment automatically per user per item
+
+2. **"First" redemptions** - When someone redeems "first" or "first to the stream"
+   - Bot will say: `@username was first in the stream (#1) times!`
+   - Counts increment automatically per user
+
+3. **Customize messages** - Edit `redemptionMessages.json` in the project root:
+   ```json
+   {
+     "daily": {
+       "message": "{user} has redeemed their daily {item} (#{count}) times!"
+     },
+     "first": {
+       "message": "{user} was first in the stream (#{count}) times!"
+     }
+   }
+   ```
+   - `{user}` - Username
+   - `{item}` - Item name (for daily redemptions)
+   - `{count}` or `#{count}` - Redemption count
+
+The bot creates this file automatically on first run with default messages.
+
+## Step 12: Trivia System
+
+The bot includes an AI-powered trivia system:
+
+1. **Random trivia events** - Automatically triggers every 10-20 minutes for active chatters
+   - Questions are AI-generated (20% chance of being related to current stream category)
+   - First correct answer wins 400 points
+   - Questions timeout after 60 seconds if unanswered
+
+2. **Manual trivia control** (Mod/Streamer only):
+   - `!trivia start` - Manually trigger a trivia question
+   - `!trivia enable` - Enable random trivia events
+   - `!trivia disable` - Disable random trivia (manual start still works)
+   - `!trivia status` - Check trivia system status
+
+3. **Requirements**:
+   - AI API key (Groq recommended - free at https://console.groq.com/)
+   - Trivia uses the same AI provider as chat responses
+
 ## Next Steps
 
 Once everything is working:
@@ -430,6 +480,8 @@ Once everything is working:
 2. **Add more games** - Check `src/games/games.ts`
 3. **Create custom actions** - Check `src/actions/actions.ts`
 4. **Set up webhooks** - For automatic channel point detection (advanced)
+5. **Customize redemption messages** - Edit `redemptionMessages.json`
+6. **Configure trivia** - Use `!trivia` commands to manage the trivia system
 
 ## Getting Help
 

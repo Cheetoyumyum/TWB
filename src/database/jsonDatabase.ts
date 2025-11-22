@@ -30,6 +30,7 @@ interface DatabaseData {
     response: string | null;
     timestamp: string;
   }>;
+  redemptionCounts: Record<string, Record<string, number>>; // username -> redemptionType -> count
   nextTransactionId: number;
 }
 
@@ -55,6 +56,7 @@ export class BotDatabase {
         this.data.userBalances = this.data.userBalances || {};
         this.data.transactions = this.data.transactions || [];
         this.data.chatContext = this.data.chatContext || [];
+        this.data.redemptionCounts = this.data.redemptionCounts || {};
         this.data.nextTransactionId = this.data.nextTransactionId || 1;
       } catch (error) {
         console.warn('Failed to load database, initializing new one:', error);
@@ -73,6 +75,7 @@ export class BotDatabase {
       userBalances: {},
       transactions: [],
       chatContext: [],
+      redemptionCounts: {},
       nextTransactionId: 1,
     };
     this.save();
@@ -292,6 +295,27 @@ export class BotDatabase {
       }))
       .sort((a, b) => b.balance - a.balance)
       .slice(0, limit);
+  }
+
+  incrementRedemptionCount(username: string, redemptionType: string): number {
+    const key = username.toLowerCase();
+    if (!this.data.redemptionCounts[key]) {
+      this.data.redemptionCounts[key] = {};
+    }
+    if (!this.data.redemptionCounts[key][redemptionType]) {
+      this.data.redemptionCounts[key][redemptionType] = 0;
+    }
+    this.data.redemptionCounts[key][redemptionType]++;
+    this.save();
+    return this.data.redemptionCounts[key][redemptionType];
+  }
+
+  getRedemptionCount(username: string, redemptionType: string): number {
+    const key = username.toLowerCase();
+    if (!this.data.redemptionCounts[key] || !this.data.redemptionCounts[key][redemptionType]) {
+      return 0;
+    }
+    return this.data.redemptionCounts[key][redemptionType];
   }
 
   close(): void {

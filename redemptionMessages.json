@@ -1,0 +1,13 @@
+{
+  "daily": {
+    "pattern": "daily",
+    "message": "{user} has redeemed their daily {item} (#{count}) times!",
+    "description": "Message for daily redemptions. Use {user} for username, {item} for the item name, {count} for the count."
+  },
+  "first": {
+    "pattern": "first",
+    "message": "{user} was first in the stream (#{count}) times!",
+    "description": "Message for first redemptions. Use {user} for username, {count} for the count."
+  }
+}
+

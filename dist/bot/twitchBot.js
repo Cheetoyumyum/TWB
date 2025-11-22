@@ -87,6 +87,7 @@ class TwitchBot {
             });
         }
         this.channelPointsHandler = new channelPoints_1.ChannelPointsHandler(this.db);
+        this.channelPointsHandler.setSayCallback((message) => this.say(message));
         this.commandHandler = new commands_1.CommandHandler(this.db, this.games, this.actions, this.sevenTV, this.channel, this.adHandler);
         this.actions.setTimeoutCallback((target, duration, message) => {
             this.timeoutUser(target, duration, message);
@@ -311,7 +312,9 @@ class TwitchBot {
     }
     handleChannelPointsRedemption(username, redemptionTitle, rewardCost) {
         const result = this.channelPointsHandler.handleRedemption(username, redemptionTitle, rewardCost);
-        if (result.success && result.message) {
+        // Only send message if it's not already sent by the handler (for custom messages)
+        // Custom messages are sent via the sayCallback, so we only send here for deposits
+        if (result.success && result.message && result.deposited !== undefined) {
             this.say(result.message);
         }
     }

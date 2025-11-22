@@ -134,6 +134,7 @@ export class TwitchBot {
       });
     }
     this.channelPointsHandler = new ChannelPointsHandler(this.db);
+    this.channelPointsHandler.setSayCallback((message: string) => this.say(message));
     this.commandHandler = new CommandHandler(
       this.db,
       this.games,
@@ -408,7 +409,9 @@ export class TwitchBot {
 
   public handleChannelPointsRedemption(username: string, redemptionTitle: string, rewardCost: number): void {
     const result = this.channelPointsHandler.handleRedemption(username, redemptionTitle, rewardCost);
-    if (result.success && result.message) {
+    // Only send message if it's not already sent by the handler (for custom messages)
+    // Custom messages are sent via the sayCallback, so we only send here for deposits
+    if (result.success && result.message && result.deposited !== undefined) {
       this.say(result.message);
     }
   }

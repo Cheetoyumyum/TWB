@@ -172,6 +172,9 @@ export class CommandHandler {
       case 'give':
         return this.handleGivePoints(username, args, context);
 
+      case 'twb':
+        return `@${username} Check out the bot on GitHub: https://github.com/Cheetoyumyum/TWB`;
+
       default:
         return null;
     }

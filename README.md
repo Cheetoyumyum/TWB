@@ -15,7 +15,8 @@ A comprehensive Twitch bot for chat engagement, channel points management, gambl
 - Automatic detection of channel point redemptions with "DEPOSIT: #" format
 - User balance tracking and management
 - Transaction history
-- Secure balance storage in SQLite database
+- Secure balance storage in JSON database (no native compilation needed!)
+- **Custom redemption messages** for "Daily [x]" and "First" redemptions with automatic counting
 
 ### 🎲 Gambling Games
 - **Coin Flip**: Bet on heads or tails (2x payout)
@@ -44,12 +45,28 @@ A comprehensive Twitch bot for chat engagement, channel points management, gambl
 - Seamless integration with chat interactions
 
 ### 📺 Ad Break Management
-- Automatic warnings **before Twitch’s scheduled ads** hit, using the Ads API (`channel:read:ads`)
+- Automatic warnings **before Twitch's scheduled ads** hit, using the Ads API (`channel:read:ads`)
 - Friendly messages during live ad breaks (without forcing the ad to run)
 - Timer-based ad management (`!ad [seconds]`) when you choose to trigger a break
-- Customizable ad start/end messages and auto “welcome back” once the break is over
+- Customizable ad start/end messages and auto "welcome back" once the break is over
 - Manual ad end command (`!ad end`)
 - Engaging, community-friendly ad notifications
+
+### 🎯 Trivia System
+- AI-generated trivia questions (20% chance of being related to current stream category)
+- Random trivia events every 10-20 minutes for active chatters
+- Manual trivia triggers via `!trivia start` (mod/streamer only)
+- First correct answer wins 400 points
+- 60-second timeout if no one answers
+- Canon validation for game lore questions (Zelda, DBD, etc.)
+- Questions timeout after 60 seconds if unanswered
+
+### 🎁 Custom Redemption Messages
+- Automatic counting messages for "Daily [x]" redemptions (e.g., "Daily monster", "Daily burger")
+- Automatic counting messages for "First" redemptions
+- Customizable messages via `redemptionMessages.json` config file
+- Tracks redemption counts per user per redemption type
+- Example: `@username has redeemed their daily monster (#5) times!`
 
 ### 📊 Complete Command List
 
@@ -69,7 +86,12 @@ A comprehensive Twitch bot for chat engagement, channel points management, gambl
   - Example: `!givepts @SomeUser 5000`
   - **Non-streamer givers pay a 10% fee (min 100 pts) that is burned**, so mods need enough balance to cover the gift + fee. Streamer gifts are fee-free.
 - `!accept [@user]` / `!decline [@user]` - Quickly respond to the most recent duel challenge without retyping `!duel accept @...`
-- `!ecoReset` - Streamer-only emergency nuke that clears all balances and stats
+- `!ecoReset` (or `!reseteco`) - Streamer-only emergency nuke that clears all balances and stats
+- `!trivia [start|enable|disable|status]` - Manage trivia system (Mod/Streamer only)
+  - `!trivia start` - Manually trigger a trivia question
+  - `!trivia enable` - Enable random trivia events
+  - `!trivia disable` - Disable random trivia events (manual start still works)
+  - `!trivia status` - Check trivia system status
 
 #### 🎮 Gambling Games
 All games support `all` or `allin` to bet your entire balance!
@@ -127,6 +149,7 @@ Use `!actions` to see all available actions and their exact syntax!
 #### 📖 Help Commands
 - `!help` - Quick command guide
 - `!commands` - Full detailed command list
+- `!twb` - Get the GitHub repository link
 
 ## Setup
 
@@ -441,6 +464,24 @@ The bot uses a JSON-based file system to store:
 **No native compilation required!** The database is pure JavaScript, so you don't need Visual Studio or any build tools. Database file is created automatically at the path specified in `DATABASE_PATH` (default: `./data/bot.json`).
 
 ## Customization
+
+### Custom Redemption Messages
+Edit `redemptionMessages.json` in the project root to customize messages for "Daily [x]" and "First" redemptions:
+- `{user}` - Replaced with username
+- `{item}` - Replaced with item name (for daily redemptions)
+- `{count}` or `#{count}` - Replaced with redemption count
+
+Example:
+```json
+{
+  "daily": {
+    "message": "{user} has redeemed their daily {item} (#{count}) times!"
+  },
+  "first": {
+    "message": "{user} was first in the stream (#{count}) times!"
+  }
+}
+```
 
 ### Adding New Games
 Edit `src/games/games.ts` and add your game logic, then register it in `src/commands/commands.ts`.

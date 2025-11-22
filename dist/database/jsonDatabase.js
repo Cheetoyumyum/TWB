@@ -53,6 +53,7 @@ class BotDatabase {
                 this.data.userBalances = this.data.userBalances || {};
                 this.data.transactions = this.data.transactions || [];
                 this.data.chatContext = this.data.chatContext || [];
+                this.data.redemptionCounts = this.data.redemptionCounts || {};
                 this.data.nextTransactionId = this.data.nextTransactionId || 1;
             }
             catch (error) {
@@ -71,6 +72,7 @@ class BotDatabase {
             userBalances: {},
             transactions: [],
             chatContext: [],
+            redemptionCounts: {},
             nextTransactionId: 1,
         };
         this.save();
@@ -263,6 +265,25 @@ class BotDatabase {
         }))
             .sort((a, b) => b.balance - a.balance)
             .slice(0, limit);
+    }
+    incrementRedemptionCount(username, redemptionType) {
+        const key = username.toLowerCase();
+        if (!this.data.redemptionCounts[key]) {
+            this.data.redemptionCounts[key] = {};
+        }
+        if (!this.data.redemptionCounts[key][redemptionType]) {
+            this.data.redemptionCounts[key][redemptionType] = 0;
+        }
+        this.data.redemptionCounts[key][redemptionType]++;
+        this.save();
+        return this.data.redemptionCounts[key][redemptionType];
+    }
+    getRedemptionCount(username, redemptionType) {
+        const key = username.toLowerCase();
+        if (!this.data.redemptionCounts[key] || !this.data.redemptionCounts[key][redemptionType]) {
+            return 0;
+        }
+        return this.data.redemptionCounts[key][redemptionType];
     }
     close() {
         this.save();
