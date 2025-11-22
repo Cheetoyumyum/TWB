@@ -66,7 +66,7 @@ A comprehensive Twitch bot for chat engagement, channel points management, gambl
 - Automatic counting messages for "First" redemptions
 - Customizable messages via `redemptionMessages.json` config file
 - Tracks redemption counts per user per redemption type
-- Example: `@username has redeemed their daily monster (#5) times!`
+- Example: `@username has redeemed their daily Cheeto (#5) times!`
 
 ### 📊 Complete Command List
 
@@ -519,5 +519,6 @@ MIT
 ## Contributing
 
 Feel free to submit issues and enhancement requests!
+
 
 
